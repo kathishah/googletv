@@ -30,12 +30,25 @@ The Mac mini's Photos settings screenshot shows the open library under `Samsung_
 
 The ordinary folders beside the package can be a separate SMB source later. Their folder names do not represent Photos albums.
 
+Still to check on the Mac mini: Photos → Settings → iCloud, "Download Originals to this Mac" versus "Optimize Mac Storage". Record the result here.
+
+### What originals contains
+
+`originals` holds every original the library has downloaded, not just what the Photos app shows in its main view. Expected behavior based on how Photos stores files, not yet verified against this library:
+
+- **Hidden photos** are flagged in the database only; their files stay in `originals`.
+- **Recently Deleted** items keep their files until they are permanently deleted (after about 30 days or when emptied).
+- **Edits are not applied.** Crops, rotations, and adjustments made in Photos live elsewhere in the package; `originals` holds unedited files.
+- Screenshots, document scans, receipts, and Live Photo `.mov` companion files are mixed in with ordinary photos.
+
+An "all of originals" slideshow on a shared living-room TV will therefore show hidden and deleted photos. Before enabling it, decide whether to accept that or use a Mac-side export into a separate folder as the default source. An export folder fixes four things at once: album selection, hidden and deleted photos, applied edits, and photos that exist only in iCloud. The TV reads it over the same SMB share.
+
 ### SMB authentication test (2026-10-11)
 
-The Mac mini's `Photos` share is configured for SMB Guest access and read-only access. From the development Mac, an explicit Guest mount (`//guest:@<host>/Photos`) could read the library's `originals` directory and three sample images; the recursive inventory completed. The share listing probe also accepted Guest access. Current-session authentication and anonymous-only access were rejected. This establishes that the server accepts SMB Guest access, not anonymous access; an Android SMB client must offer an explicit Guest mode (or equivalent guest credentials). Do not treat an arbitrary username with a blank password as Guest. This was tested from the development Mac, not the TV, and does not establish that the app's SMB client works on the TV.
+The Mac mini's `Photos` share is configured for SMB Guest access and read-only access. From the development Mac, an explicit Guest mount (`//guest:@<host>/Photos`) could read the library's `originals` directory and three sample images; the recursive inventory completed. The share listing probe also accepted Guest access. Current-session authentication and anonymous-only access were rejected. This establishes that the server accepts SMB Guest access, not anonymous access; an Android SMB client must offer an explicit Guest mode (or equivalent guest credentials). Do not treat an arbitrary username with a blank password as Guest. This was tested from the development Mac, not the TV, and does not establish that the app's SMB client works on the TV. SMB1 is obsolete and insecure, and macOS file sharing is built around SMB2/3, so the Android client library must support SMB2 or later.
 
 Because the share is readable by Guest, any device on a network that can reach the Mac mini's SMB service may be able to read its contents. Keep the share read-only and limit network reachability to the intended local network.
 
 ## Product implication
 
-“All photos” and “live album sync” are goals, not promises for both providers. The app must show capabilities per source honestly. For this private setup, build the local slideshow first, then add read-only SMB access to available originals. To select actual Photos albums, export them into named folders on the share or generate a separate album index on the Mac mini; do not infer albums from package directories. Google Picker remains an optional limited-selection path.
+“All photos” and “live album sync” are goals, not promises for both providers. The app must show capabilities per source honestly. For this private setup, build the local slideshow first, then add read-only SMB access to available originals or an exported folder (see [what originals contains](#what-originals-contains)). To select actual Photos albums, export them into named folders on the share or generate a separate album index on the Mac mini; do not infer albums from package directories. Google Picker remains an optional limited-selection path.

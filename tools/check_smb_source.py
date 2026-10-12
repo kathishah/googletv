@@ -156,7 +156,7 @@ def check_library(mount: Path, library: str) -> bool:
         print(f"Sample image files readable: {readable}")
         if scan_errors:
             print(f"Inventory scan errors: {scan_errors}")
-        return (readable > 0 or videos > 0) and scan_errors == 0
+        return readable > 0 and scan_errors == 0
     except OSError as error:
         print(f"Sample read: failed ({type(error).__name__})")
         return False
@@ -176,12 +176,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if not check_host(args.host):
+        return 1
     list_share_endpoints(args.host)
     check_server_identity(args.host)
     list_share_endpoints(args.host, mode="guest only")
     list_share_endpoints(args.host, mode="anonymous only")
-    if not check_host(args.host):
-        return 1
     mount_path = args.mount_path or (Path("/Volumes") / args.share)
     return 0 if check_library(mount_path, args.library) else 2
 
