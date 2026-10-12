@@ -13,12 +13,12 @@ Read from Settings → System → About on the TV, 2026-10-11:
 | Kernel | 5.4.233+, built 2024-11-28 |
 | OS build | STT2.230203.001 |
 | Product/firmware info | V8-T65T02-LF1V187.001303. A TCL platform/firmware code, not a model name; community sources read it as platform branch, board code, and software version. Useful for tracking firmware updates. |
-| Model | TCL 65" A300 (NXTFRAME art TV, 2024), per the on-TV user guide and the box. Consistent with the Android TV 12 / October 2024 software. A Best Buy listing for the similar [65A3G Designer Series (2026)](https://support.tcl.com/en_US/a3g-series) was considered and ruled out. Optional cross-check in step 3: `adb shell getprop ro.product.model`. |
+| Model | TCL 65" A300 (NXTFRAME art TV, 2024), per the on-TV user guide and the box. Consistent with the Android TV 12 / October 2024 software. A Best Buy listing for the similar [65A3G Designer Series (2026)](https://support.tcl.com/en_US/a3g-series) was considered and ruled out. ADB reports generic `Smart TV` for `ro.product.model` and `G08_4K_US_NF` for `ro.product.device`. |
 
 What this implies:
 
 - Use `minSdk 31` so the app can install on this TV. Check current official documentation before choosing `targetSdk` and `compileSdk`.
-- Android TV 12 does not support pairing-code wireless debugging. The [official adb guide](https://developer.android.com/tools/adb) requires Android 13 or higher for that on TV. Use the network debugging path in step 2.
+- The [official adb guide](https://developer.android.com/tools/adb) describes pairing-code wireless debugging. This TV's Developer options screen did not list Wireless debugging. USB debugging enabled legacy network ADB on port 5555; that port was not reachable before USB debugging was enabled.
 - Community reports (see [Aerial Views setup](https://github.com/theothernt/AerialViews)) say Google TV devices running Android TV 12 or later have no settings menu for choosing a third-party screensaver; one is selected with `adb` instead (step 4).
 - The TCL Auto Launch `appops` name for Android TV 13 or lower is `APP_AUTO_START` (step 5).
 - The A300 is TCL's NXTFRAME "art TV". Per [TCL support](https://support.tcl.com/en_US/t-exhibition-turning-your-tcl-tv-into-a-work-of-art) and launch coverage, it has its own idle **Art Mode** (the T-Exhibition app) with an art library, AI art, and a personal photo gallery loaded from USB or the TCL Home phone app. This is separate from Google TV's Ambient mode. It is unknown whether Art Mode replaces, precedes, or blocks the Android screensaver set by `screensaver_components`; step 4 must find out.
@@ -27,21 +27,9 @@ What this implies:
 
 ### 1. Install the Android toolchain on the development Mac
 
-Status: **not done.** Check on 2026-10-11 found no working Java runtime, Android SDK, Android Studio, Gradle, or `adb`. The earlier Homebrew failure (unaccepted Xcode license) is resolved: `xcodebuild -license check` now succeeds.
+Status: **done.** On 2026-10-11, Android Studio 2026.2.1.8, Android SDK command-line tools, and platform-tools were installed with Homebrew. The first-run setup completed. `adb version` reports 37.0.1; Android Studio's bundled JDK is available. The installed SDK includes platform 37.0, Build Tools 36.0.0, and an Android Emulator system image. These are available for later use; choose the app's compile/target SDK from current official guidance before project generation. The earlier Homebrew failure (unaccepted Xcode license) is resolved: `xcodebuild -license check` succeeds.
 
-Recommended: install Android Studio, which bundles a compatible JDK, the SDK manager, and platform tools.
-
-```sh
-brew install --cask android-studio
-```
-
-Open Android Studio once and let the setup wizard install the Android SDK and platform tools. Then add `adb` to the shell path:
-
-```sh
-echo 'export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"' >> ~/.zshrc
-```
-
-Command-line alternative (no IDE): `brew install openjdk@17 android-commandlinetools android-platform-tools`. Command-line Gradle needs a JDK compatible with the chosen Android Gradle Plugin; check its release notes. Never commit `local.properties`.
+Open Android Studio and complete its first-run setup to install the Android SDK. Review and accept the Android SDK license terms in the setup flow before SDK packages are installed. Android Studio's bundled JDK is available; Homebrew-installed `adb` and SDK command-line tools are also on `PATH`. Command-line Gradle needs a JDK compatible with the chosen Android Gradle Plugin; check its release notes. Never commit `local.properties`.
 
 Verify:
 
@@ -51,30 +39,26 @@ adb version
 
 ### 2. Connect adb to the TV
 
-Status: **not done.** Requires step 1.
+Status: **done.** Requires step 1.
 
-On the TV:
-
-1. Settings → System → Developer options → turn on **USB debugging**. On Android TV this typically also enables network debugging on TCP port 5555, so no cable is needed. This is community-documented TV behavior; the official guide does not cover Android TV 12.
-2. Find the TV's IP address under Settings → Network & Internet → the connected network. A DHCP reservation in the router keeps it stable.
-
-On the Mac, with the TV and Mac on the same network:
+On the TV, open Settings → System → Developer options. If **Wireless debugging** is available, enable it and choose **Pair device with pairing code**. Keep the TV and Mac on the same network. The TV displays a pairing address, pairing port, and temporary code. On the Mac, run:
 
 ```sh
-adb connect TV_IP:5555
+adb pair TV_IP:PAIRING_PORT
 ```
 
-The TV shows **Allow USB debugging?** with the Mac's key fingerprint. Select "Always allow from this computer", then OK.
+Enter the code when prompted. Then use the separate IP address and connection port shown in the Wireless debugging screen:
 
 ```sh
+adb connect TV_IP:DEBUG_PORT
 adb devices
 ```
 
-Expected: `TV_IP:5555  device`. If it shows `unauthorized`, accept the prompt on the TV and run `adb devices` again. If the connection is refused, look in Developer options for a separate **Network debugging** or **Wireless debugging** option, enable it, and retry. Record what worked in [Device findings](#device-findings).
+Accept any debugging authorization prompt on the TV. If Wireless debugging is not available on this firmware, enable **USB debugging** and try the legacy network ADB endpoint on port 5555; on this TV it became reachable after USB debugging was enabled. A physical USB cable was not needed. The TV showed the RSA authorization prompt; selecting **Always allow from this computer** authorized the development Mac. Record the available menu and connection result in [Device findings](#device-findings).
 
 ### 3. Record device facts
 
-Status: **partly done** (see [Known TV facts](#known-tv-facts)). Requires step 2.
+Status: **done** (see [Known TV facts](#known-tv-facts) and [Device findings](#device-findings)). Requires step 2.
 
 ```sh
 adb shell getprop ro.build.version.sdk
@@ -83,11 +67,11 @@ adb shell settings get secure screensaver_components
 adb shell settings get system screen_off_timeout
 ```
 
-Expected SDK: `31`. Record the model name and the **original** `screensaver_components` and `screen_off_timeout` values in [Device findings](#device-findings) before changing anything; they are needed to restore the built-in Ambient mode.
+ADB reports SDK `31`, generic model `Smart TV`, and device product `G08_4K_US_NF`. The original `screensaver_components` value is `com.google.android.apps.tv.dreamx/.service.Backdrop`; `screen_off_timeout` is `600000` ms (10 minutes). These are recorded below and must be restored after any screensaver tests.
 
 ### 4. Learn how screensavers are selected on this TV
 
-Status: **not done.** Requires step 3.
+Status: **partly done.** The installed service inventory is recorded below; settings behavior and third-party selection still need testing. Requires step 3.
 
 Check Settings → System → Ambient mode / Screensaver and record which options are shown. Also find the Art Mode / T-Exhibition settings (look for an idle or Art Mode toggle and its timeout) and record them. Let the TV go idle with no changes and note what appears first: Art Mode, Google's Ambient mode, or nothing.
 
@@ -172,10 +156,12 @@ Lower priority now that SMB is the chosen source. If testing the web alternative
 | Date | TV model / OS | Test | Result |
 | --- | --- | --- | --- |
 | 2026-10-11 | TCL 65" A300 / Android TV 12, build STT2.230203.001 | OS facts from Settings → System → About; model from on-TV user guide and box | Recorded in [Known TV facts](#known-tv-facts) |
-| 2026-10-11 | Development Mac | Xcode license check | Accepted; Android toolchain still not installed |
-| Pending | Pending | adb connection method (step 2) | Not tested |
-| Pending | Pending | Original `screensaver_components` and `screen_off_timeout` (step 3) | Not recorded |
-| Pending | Pending | Screensaver options in Settings; adb selection (step 4) | Not tested |
+| 2026-10-11 | Development Mac | Xcode license check | Accepted; Android toolchain had not yet been installed |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Developer options menu | Wireless debugging is not listed; USB debugging was enabled afterward. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Legacy ADB network connection and authorization | Port 5555 initially refused while USB debugging was off. After enabling it, ADB connected; accepting **Always allow from this computer** changed device state from `unauthorized` to `device`. No physical USB connection was needed. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Device properties and original screensaver settings (step 3) | SDK 31; `ro.product.model=Smart TV`; `ro.product.device=G08_4K_US_NF`; `screensaver_components=com.google.android.apps.tv.dreamx/.service.Backdrop`; `screen_off_timeout=600000` ms (10 minutes). Read-only; settings not changed. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Installed DreamService inventory (read-only, step 4) | `adb shell cmd package query-services --brief -a android.service.dreams.DreamService` found built-in Colors (`com.android.dreams.basic/.Colors`) and Backdrop (`com.google.android.apps.tv.dreamx/.service.Backdrop`). No third-party dream is installed yet. |
+| Pending | Pending | Screensaver options in Settings; third-party dream selection and idle activation (step 4) | Not tested |
 | Pending | Pending | What runs on idle: Art Mode vs. selected dream, with Art Mode on and off (step 4) | Not tested |
 | Pending | Pending | Aerial Views over SMB Guest, HEIC, idle start (step 6) | Not tested |
 | Pending | Pending | Our dream selected and starts on idle (step 7) | Not tested |

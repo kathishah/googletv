@@ -2,6 +2,12 @@
 
 First planned Google TV app. The Android project will live here.
 
+## Progress (2026-10-12)
+
+- Android Studio, Android SDK command-line tools, and `adb` are installed on the development Mac.
+- The TCL TV is authorized for network ADB. Its Android version, original screensaver component, idle timeout, and installed built-in dreams are recorded in [device testing](../../docs/DEVICE_TESTING.md).
+- The Android app project has not been created yet. The next milestone is a small Kotlin launcher and `DreamService` that can be installed and tested for idle activation before adding the SMB source.
+
 ## Initial build
 
 - TV launcher screen with remote navigation and a manual slideshow preview.
