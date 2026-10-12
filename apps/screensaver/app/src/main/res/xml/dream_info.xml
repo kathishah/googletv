@@ -1,0 +1,4 @@
+<dream xmlns:android="http://schemas.android.com/apk/res/android"
+    android:previewImage="@drawable/sample_mountain_lake"
+    android:settingsActivity="com.googletv.screensaver/.MainActivity"
+    android:showClockAndComplications="false" />

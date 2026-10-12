@@ -6,7 +6,26 @@ First planned Google TV app. The Android project will live here.
 
 - Android Studio, Android SDK command-line tools, and `adb` are installed on the development Mac.
 - The TCL TV is authorized for network ADB. Its Android version, original screensaver component, idle timeout, and installed built-in dreams are recorded in [device testing](../../docs/DEVICE_TESTING.md).
-- The Android app project has not been created yet. The next milestone is a small Kotlin launcher and `DreamService` that can be installed and tested for idle activation before adding the SMB source.
+- A Kotlin Android TV app now builds with AGP 9.2.0 and Gradle 9.4.1. It targets API 34, compiles against API 37, and supports API 31 and later. API 34 meets [Google Play's current Android TV target requirement](https://developer.android.com/google/play/requirements/target-sdk); the compile SDK and plugin versions are supported by the official [AGP release notes](https://developer.android.com/build/releases/agp-9-2-0-release-notes).
+- The app is installed on the TCL TV. Android lists its `SlideshowDreamService` alongside the built-in dreams. The launcher/settings screen has been opened on the TV.
+- D-pad interval selection, manual preview, landscape and portrait fit, 10-second slide changes, Back behavior, and interval persistence after force-stop/relaunch were verified on the TV.
+- The `DreamService` was selected temporarily and started on idle. Both photos advanced in dream mode. The original Backdrop selection and 10-minute timeout were restored after the test.
+
+The bundled landscape and portrait sample photos are generated demo assets. `PhotoSource`, `SlideshowScheduler`, and `SlideshowPlayer` are separate so the later SMB adapter can reuse playback and rendering without mixing in source access.
+
+Build and lint from this directory:
+
+```sh
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+ANDROID_HOME="$HOME/Library/Android/sdk" \
+./gradlew assembleDebug lintDebug
+```
+
+Install or update the debug build:
+
+```sh
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
 ## Initial build
 

@@ -71,7 +71,7 @@ ADB reports SDK `31`, generic model `Smart TV`, and device product `G08_4K_US_NF
 
 ### 4. Learn how screensavers are selected on this TV
 
-Status: **partly done.** The installed service inventory is recorded below; settings behavior and third-party selection still need testing. Requires step 3.
+Status: **partly done.** The installed services and successful ADB-selected dream activation are recorded below; the settings UI and TCL Art Mode interaction still need testing. Requires step 3.
 
 Check Settings → System → Ambient mode / Screensaver and record which options are shown. Also find the Art Mode / T-Exhibition settings (look for an idle or Art Mode toggle and its timeout) and record them. Let the TV go idle with no changes and note what appears first: Art Mode, Google's Ambient mode, or nothing.
 
@@ -116,10 +116,10 @@ Then apply step 5 with package `com.neilturner.aerialviews`. Record whether it c
 
 ### 7. Build and install our app
 
-Status: **blocked** until the Android project exists (roadmap milestone 2). From `apps/screensaver/`:
+Status: **partly done.** The first Kotlin app slice is built and installed. D-pad settings, preview, interval persistence, photo changes, and idle activation passed on the TV. TCL Auto Launch permission and Art Mode interaction remain to be checked. From `apps/screensaver/`:
 
 ```sh
-./gradlew assembleDebug
+./gradlew assembleDebug lintDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -160,8 +160,12 @@ Lower priority now that SMB is the chosen source. If testing the web alternative
 | 2026-10-12 | TCL 65" A300 / Android TV 12 | Developer options menu | Wireless debugging is not listed; USB debugging was enabled afterward. |
 | 2026-10-12 | TCL 65" A300 / Android TV 12 | Legacy ADB network connection and authorization | Port 5555 initially refused while USB debugging was off. After enabling it, ADB connected; accepting **Always allow from this computer** changed device state from `unauthorized` to `device`. No physical USB connection was needed. |
 | 2026-10-12 | TCL 65" A300 / Android TV 12 | Device properties and original screensaver settings (step 3) | SDK 31; `ro.product.model=Smart TV`; `ro.product.device=G08_4K_US_NF`; `screensaver_components=com.google.android.apps.tv.dreamx/.service.Backdrop`; `screen_off_timeout=600000` ms (10 minutes). Read-only; settings not changed. |
-| 2026-10-12 | TCL 65" A300 / Android TV 12 | Installed DreamService inventory (read-only, step 4) | `adb shell cmd package query-services --brief -a android.service.dreams.DreamService` found built-in Colors (`com.android.dreams.basic/.Colors`) and Backdrop (`com.google.android.apps.tv.dreamx/.service.Backdrop`). No third-party dream is installed yet. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Installed DreamService inventory (read-only, step 4) | Before the app install, `adb shell cmd package query-services --brief -a android.service.dreams.DreamService` found built-in Colors (`com.android.dreams.basic/.Colors`) and Backdrop (`com.google.android.apps.tv.dreamx/.service.Backdrop`). |
+| 2026-10-12 | Development Mac | First app build | `cd apps/screensaver && ./gradlew assembleDebug lintDebug` succeeded using Android Studio's JDK 25.0.3, AGP 9.2.0, Gradle 9.4.1, compile SDK 37, target SDK 34, and min SDK 31. Android lint passed. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | First app install and launcher/service discovery | `adb install -r app/build/outputs/apk/debug/app-debug.apk` succeeded. Package query found `com.googletv.screensaver/.dream.SlideshowDreamService`. The launcher screen opened. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Manual slideshow preview and settings | D-pad changed the interval to 10 seconds; preview showed the landscape sample and advanced to the portrait sample. Back returned to settings. Interval was restored to 30 seconds and remained 30 seconds after force-stop/relaunch. Existing system Backdrop component and 600000 ms screen-off timeout were not changed. |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | App DreamService idle activation | Temporarily set `screensaver_components` to `com.googletv.screensaver/.dream.SlideshowDreamService` and `screen_off_timeout` to 60000 ms. The TV started the app's `DreamActivity` after roughly one minute idle; the landscape and portrait samples advanced at the configured 30-second interval. Waking returned to Google TV. Restored Backdrop (`com.google.android.apps.tv.dreamx/.service.Backdrop`) and `screen_off_timeout=600000` ms. TCL Auto Launch permission and Art Mode behavior were not changed or separately tested. |
 | Pending | Pending | Screensaver options in Settings; third-party dream selection and idle activation (step 4) | Not tested |
 | Pending | Pending | What runs on idle: Art Mode vs. selected dream, with Art Mode on and off (step 4) | Not tested |
 | Pending | Pending | Aerial Views over SMB Guest, HEIC, idle start (step 6) | Not tested |
-| Pending | Pending | Our dream selected and starts on idle (step 7) | Not tested |
+| 2026-10-12 | TCL 65" A300 / Android TV 12 | Our dream selected and starts on idle (step 7) | Verified with a temporary 60-second screen-off timeout; original Backdrop and 600000 ms timeout restored. |
