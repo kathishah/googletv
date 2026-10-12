@@ -1,0 +1,32 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+.cxx/
+captures/
+.externalNativeBuild/
+
+# Signing, credentials, and local photos
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+secrets.properties
+**/google-services.json
+**/client_secret*.json
+**/credentials*.json
+**/oauth*.json
+**/private-photos/
+**/photo-cache/
+
+# macOS and editor files
+.DS_Store
+.vscode/
+*.swp
+
+# Python diagnostics
+__pycache__/
+*.pyc
