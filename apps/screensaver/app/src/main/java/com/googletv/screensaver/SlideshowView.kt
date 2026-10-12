@@ -41,14 +41,26 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         image.setImageResource(slide.imageResource)
         image.contentDescription = slide.description
         caption.text = slide.description
+        caption.gravity = Gravity.BOTTOM or Gravity.START
+        caption.textSize = 18f
+        caption.layoutParams = (caption.layoutParams as LayoutParams).apply {
+            width = LayoutParams.MATCH_PARENT
+            height = LayoutParams.WRAP_CONTENT
+            gravity = Gravity.BOTTOM
+        }
         caption.visibility = View.VISIBLE
     }
 
     fun showEmptyState() {
         image.setImageDrawable(null)
-        caption.text = "No photos are available yet"
+        caption.text = context.getString(R.string.empty_photo_state)
         caption.gravity = Gravity.CENTER
         caption.textSize = 24f
+        caption.layoutParams = (caption.layoutParams as LayoutParams).apply {
+            width = LayoutParams.MATCH_PARENT
+            height = LayoutParams.MATCH_PARENT
+            gravity = Gravity.CENTER
+        }
         caption.visibility = View.VISIBLE
     }
 

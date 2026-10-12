@@ -33,11 +33,13 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (player != null) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         player?.start()
     }
 
     override fun onPause() {
         player?.stop()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onPause()
     }
 
@@ -97,6 +99,7 @@ class MainActivity : Activity() {
     }
 
     private fun enterPreview() {
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val view = SlideshowView(this)
         setContentView(view)
         player = SlideshowPlayer(
@@ -110,6 +113,7 @@ class MainActivity : Activity() {
     private fun leavePreview() {
         player?.stop()
         player = null
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(settingsScreen)
         refreshIntervalControls()
     }
@@ -117,7 +121,7 @@ class MainActivity : Activity() {
     private fun refreshIntervalControls() {
         val selectedSeconds = preferences.intervalSeconds()
         val selected = IntervalPreset.all.firstOrNull { it.seconds == selectedSeconds } ?: IntervalPreset.default
-        intervalSummary.text = "Current interval: ${selected.label}"
+        intervalSummary.text = getString(R.string.current_interval, selected.label)
         intervalButtons.removeAllViews()
         var selectedButton: Button? = null
 

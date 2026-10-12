@@ -14,7 +14,7 @@ class SlideshowDreamService : DreamService() {
         super.onAttachedToWindow()
         isInteractive = false
         isFullscreen = true
-        isScreenBright = false
+        isScreenBright = true
 
         slideshowView = SlideshowView(this)
         setContentView(slideshowView)

@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Photo Screensaver</string>
     <string name="dream_name">Photo Slideshow</string>
-    <string name="dream_preview_description">Sample mountain lake photo</string>
+    <string name="current_interval">Current interval: %1$s</string>
+    <string name="empty_photo_state">No photos are available yet</string>
 </resources>
