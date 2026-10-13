@@ -28,6 +28,7 @@ object PhotoSourceFactory {
                 preferences.photoPoolSize().count,
                 preferences.photoLabelMode(),
                 placeNameLookup,
+                context.cacheDir,
             )
         }
     }

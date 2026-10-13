@@ -3,10 +3,12 @@ package com.googletv.screensaver.playback
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.media.ExifInterface
 import com.googletv.screensaver.PhotoLabelMode
 import com.googletv.screensaver.R
 import java.io.BufferedInputStream
+import java.io.File
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -104,10 +106,13 @@ internal fun decodeSampledBitmap(
     open: () -> InputStream,
     targetWidth: Int,
     targetHeight: Int,
+    fallbackCacheDirectory: File? = null,
 ): Bitmap {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     open().use { BitmapFactory.decodeStream(it, null, bounds) }
-    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported or unreadable image" }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+        return decodeWithImageDecoder(open, targetWidth, targetHeight, fallbackCacheDirectory)
+    }
 
     var sampleSize = 1
     while (bounds.outWidth / sampleSize > targetWidth ||
@@ -118,6 +123,31 @@ internal fun decodeSampledBitmap(
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
     return open().use { input ->
         BitmapFactory.decodeStream(input, null, options)
-            ?: error("Unsupported or unreadable image")
+    } ?: decodeWithImageDecoder(open, targetWidth, targetHeight, fallbackCacheDirectory)
+}
+
+private fun decodeWithImageDecoder(
+    open: () -> InputStream,
+    targetWidth: Int,
+    targetHeight: Int,
+    cacheDirectory: File?,
+): Bitmap {
+    requireNotNull(cacheDirectory) { "Unsupported or unreadable image" }
+    val tempFile = File.createTempFile("smb-image-", ".tmp", cacheDirectory)
+    try {
+        open().use { input -> tempFile.outputStream().use(input::copyTo) }
+        val source = ImageDecoder.createSource(tempFile)
+        return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            var sampleSize = 1
+            while (info.size.width / sampleSize > targetWidth ||
+                info.size.height / sampleSize > targetHeight
+            ) {
+                sampleSize *= 2
+            }
+            decoder.setTargetSampleSize(sampleSize)
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    } finally {
+        tempFile.delete()
     }
 }

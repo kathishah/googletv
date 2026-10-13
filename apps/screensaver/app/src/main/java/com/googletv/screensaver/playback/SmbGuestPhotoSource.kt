@@ -34,6 +34,7 @@ class SmbGuestPhotoSource(
     private val poolSize: Int = DEFAULT_POOL_SIZE,
     private val labelMode: PhotoLabelMode = PhotoLabelMode.default,
     private val placeNameLookup: ((Double, Double) -> String?)? = null,
+    private val fallbackCacheDirectory: java.io.File,
 ) : PhotoSource {
     private val host = config.host.trim()
     private val shareName = config.share.trim()
@@ -94,6 +95,7 @@ class SmbGuestPhotoSource(
             open = open,
             targetWidth = targetWidth,
             targetHeight = targetHeight,
+            fallbackCacheDirectory = fallbackCacheDirectory,
         )
         LoadedPhoto(bitmap, label)
     }

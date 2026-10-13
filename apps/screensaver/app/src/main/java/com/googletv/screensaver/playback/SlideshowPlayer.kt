@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.hierynomus.mssmb2.SMBApiException
 import com.hierynomus.smbj.session.SMB2GuestSigningRequiredException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -109,7 +110,8 @@ class SlideshowPlayer(
                         }
                     },
                     onFailure = { error ->
-                        Log.w(LOG_TAG, "Skipping unreadable photo (${error.javaClass.simpleName})")
+                        val status = error.safeSmbStatus()?.let { ", $it" }.orEmpty()
+                        Log.w(LOG_TAG, "Skipping unreadable photo (${error.javaClass.simpleName}$status)")
                         skipUnreadableSlide(index, slide, runGeneration)
                     },
                 )
@@ -134,6 +136,13 @@ class SlideshowPlayer(
 
     private fun Throwable.hasGuestSigningFailure(): Boolean =
         generateSequence(this) { it.cause }.any { it is SMB2GuestSigningRequiredException }
+
+    private fun Throwable.safeSmbStatus(): String? =
+        generateSequence(this) { it.cause }
+            .filterIsInstance<SMBApiException>()
+            .firstOrNull()
+            ?.status
+            ?.name
 
     companion object {
         private const val LOG_TAG = "PhotoSource"
