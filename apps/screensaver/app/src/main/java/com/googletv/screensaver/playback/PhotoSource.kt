@@ -4,6 +4,7 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
+import android.graphics.Matrix
 import android.media.ExifInterface
 import com.googletv.screensaver.PhotoLabelMode
 import com.googletv.screensaver.R
@@ -51,42 +52,50 @@ class BundledSamplePhotoSource(
 
     override fun loadImage(slide: Slide): LoadedPhoto {
         val resourceId = resourceIds[slide.id] ?: error("Unknown bundled slide")
-        val bitmap = decodeSampledBitmap(
-            open = { resources.openRawResource(resourceId) },
-            targetWidth = targetWidth,
-            targetHeight = targetHeight,
-        )
-        val label = readExifLabel(
+        val metadata = readExifMetadata(
             open = { resources.openRawResource(resourceId) },
             includeLocation = labelMode == PhotoLabelMode.LOCATION_AND_DATE,
             includeDate = labelMode != PhotoLabelMode.NONE,
             placeNameLookup = placeNameLookup,
         )
-        return LoadedPhoto(bitmap, label)
+        val bitmap = decodeSampledBitmap(
+            open = { resources.openRawResource(resourceId) },
+            targetWidth = targetWidth,
+            targetHeight = targetHeight,
+            exifOrientation = metadata.orientation,
+        )
+        return LoadedPhoto(bitmap, metadata.label)
     }
 }
 
-internal fun readExifLabel(
+internal data class PhotoMetadata(val label: String?, val orientation: Int)
+
+internal fun readExifMetadata(
     open: () -> InputStream,
     includeLocation: Boolean,
     includeDate: Boolean,
     placeNameLookup: ((Double, Double) -> String?)? = null,
-): String? {
-    if (!includeLocation && !includeDate) return null
+): PhotoMetadata {
     return runCatching {
         val exif = open().use { stream ->
             BufferedInputStream(stream).use {
                 ExifInterface(it, ExifInterface.STREAM_TYPE_FULL_IMAGE_DATA)
             }
         }
+        val orientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL,
+        )
         val location = if (includeLocation) {
-            val coordinates = FloatArray(2)
-            if (exif.getLatLong(coordinates)) {
-                placeNameLookup?.invoke(coordinates[0].toDouble(), coordinates[1].toDouble())
-                    ?: String.format(Locale.US, "%.4f°, %.4f°", coordinates[0], coordinates[1])
-            } else {
-                null
-            }
+            runCatching {
+                val coordinates = FloatArray(2)
+                if (exif.getLatLong(coordinates)) {
+                    placeNameLookup?.invoke(coordinates[0].toDouble(), coordinates[1].toDouble())
+                        ?: String.format(Locale.US, "%.4f°, %.4f°", coordinates[0], coordinates[1])
+                } else {
+                    null
+                }
+            }.getOrNull()
         } else {
             null
         }
@@ -98,8 +107,10 @@ internal fun readExifLabel(
         } else {
             null
         }
-        listOfNotNull(location, date).joinToString(" · ").ifEmpty { null }
-    }.getOrNull()
+        PhotoMetadata(listOfNotNull(location, date).joinToString(" · ").ifEmpty { null }, orientation)
+    }.getOrElse {
+        PhotoMetadata(null, ExifInterface.ORIENTATION_NORMAL)
+    }
 }
 
 internal fun decodeSampledBitmap(
@@ -107,6 +118,7 @@ internal fun decodeSampledBitmap(
     targetWidth: Int,
     targetHeight: Int,
     fallbackCacheDirectory: File? = null,
+    exifOrientation: Int = ExifInterface.ORIENTATION_NORMAL,
 ): Bitmap {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     open().use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -121,9 +133,58 @@ internal fun decodeSampledBitmap(
         sampleSize *= 2
     }
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-    return open().use { input ->
-        BitmapFactory.decodeStream(input, null, options)
-    } ?: decodeWithImageDecoder(open, targetWidth, targetHeight, fallbackCacheDirectory)
+    val decoded = open().use { input -> BitmapFactory.decodeStream(input, null, options) }
+        ?: return decodeWithImageDecoder(open, targetWidth, targetHeight, fallbackCacheDirectory)
+    // BitmapFactory leaves EXIF orientation unapplied. ImageDecoder's platform path already
+    // applies it, so only transform the BitmapFactory result here.
+    return applyExifOrientation(decoded, exifOrientation)
+}
+
+private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+    val width = bitmap.width.toFloat()
+    val height = bitmap.height.toFloat()
+    val transform = when (orientation) {
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> floatArrayOf(
+            -1f, 0f, width,
+            0f, 1f, 0f,
+            0f, 0f, 1f,
+        )
+        ExifInterface.ORIENTATION_ROTATE_180 -> floatArrayOf(
+            -1f, 0f, width,
+            0f, -1f, height,
+            0f, 0f, 1f,
+        )
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> floatArrayOf(
+            1f, 0f, 0f,
+            0f, -1f, height,
+            0f, 0f, 1f,
+        )
+        ExifInterface.ORIENTATION_TRANSPOSE -> floatArrayOf(
+            0f, 1f, 0f,
+            1f, 0f, 0f,
+            0f, 0f, 1f,
+        )
+        ExifInterface.ORIENTATION_ROTATE_90 -> floatArrayOf(
+            0f, -1f, height,
+            1f, 0f, 0f,
+            0f, 0f, 1f,
+        )
+        ExifInterface.ORIENTATION_TRANSVERSE -> floatArrayOf(
+            0f, -1f, height,
+            -1f, 0f, width,
+            0f, 0f, 1f,
+        )
+        ExifInterface.ORIENTATION_ROTATE_270 -> floatArrayOf(
+            0f, 1f, 0f,
+            -1f, 0f, width,
+            0f, 0f, 1f,
+        )
+        else -> return bitmap
+    }
+    val matrix = Matrix().apply { setValues(transform) }
+    val oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    if (oriented !== bitmap) bitmap.recycle()
+    return oriented
 }
 
 private fun decodeWithImageDecoder(

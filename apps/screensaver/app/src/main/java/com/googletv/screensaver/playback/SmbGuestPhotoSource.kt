@@ -85,7 +85,7 @@ class SmbGuestPhotoSource(
 
     override fun loadImage(slide: Slide): LoadedPhoto = withDiskShare { diskShare ->
         val open = { openReadOnlyFile(diskShare, slide.id) }
-        val label = readExifLabel(
+        val metadata = readExifMetadata(
             open = { openMetadataPrefix(open) },
             includeLocation = labelMode == PhotoLabelMode.LOCATION_AND_DATE,
             includeDate = labelMode != PhotoLabelMode.NONE,
@@ -96,8 +96,9 @@ class SmbGuestPhotoSource(
             targetWidth = targetWidth,
             targetHeight = targetHeight,
             fallbackCacheDirectory = fallbackCacheDirectory,
+            exifOrientation = metadata.orientation,
         )
-        LoadedPhoto(bitmap, label)
+        LoadedPhoto(bitmap, metadata.label)
     }
 
     private fun openMetadataPrefix(open: () -> InputStream): InputStream {
