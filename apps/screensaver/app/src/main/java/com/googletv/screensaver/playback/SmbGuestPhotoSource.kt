@@ -12,6 +12,7 @@ import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.share.DiskShare
 import com.hierynomus.smbj.share.File
+import java.io.ByteArrayInputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.util.ArrayDeque
@@ -32,6 +33,7 @@ class SmbGuestPhotoSource(
     private val targetHeight: Int,
     private val poolSize: Int = DEFAULT_POOL_SIZE,
     private val labelMode: PhotoLabelMode = PhotoLabelMode.default,
+    private val placeNameLookup: ((Double, Double) -> String?)? = null,
 ) : PhotoSource {
     private val host = config.host.trim()
     private val shareName = config.share.trim()
@@ -83,9 +85,10 @@ class SmbGuestPhotoSource(
     override fun loadImage(slide: Slide): LoadedPhoto = withDiskShare { diskShare ->
         val open = { openReadOnlyFile(diskShare, slide.id) }
         val label = readExifLabel(
-            open = open,
+            open = { openMetadataPrefix(open) },
             includeLocation = labelMode == PhotoLabelMode.LOCATION_AND_DATE,
             includeDate = labelMode != PhotoLabelMode.NONE,
+            placeNameLookup = placeNameLookup,
         )
         val bitmap = decodeSampledBitmap(
             open = open,
@@ -93,6 +96,21 @@ class SmbGuestPhotoSource(
             targetHeight = targetHeight,
         )
         LoadedPhoto(bitmap, label)
+    }
+
+    private fun openMetadataPrefix(open: () -> InputStream): InputStream {
+        // Android's platform ExifInterface does not reliably read metadata directly from SMBJ's
+        // network stream. A bounded local stream preserves EXIF parsing without retaining photos.
+        val bytes = ByteArray(MAX_METADATA_BYTES)
+        var count = 0
+        open().use { input ->
+            while (count < bytes.size) {
+                val read = input.read(bytes, count, bytes.size - count)
+                if (read <= 0) break
+                count += read
+            }
+        }
+        return ByteArrayInputStream(bytes, 0, count)
     }
 
     private fun openReadOnlyFile(diskShare: DiskShare, path: String): InputStream {
@@ -150,6 +168,7 @@ class SmbGuestPhotoSource(
         const val DEFAULT_POOL_SIZE = 250
         private const val SMB_PORT = 445
         private const val SMB_TIMEOUT_SECONDS = 15L
+        private const val MAX_METADATA_BYTES = 512 * 1024
         private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")
     }
 }

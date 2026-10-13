@@ -8,7 +8,7 @@ Show personal photos on a TCL Google TV as a slideshow. The user can choose whic
 
 1. Open the TV app with the remote.
 2. Choose a photo source. For SMB, the app samples photos randomly from all supported images under the configured folder; choosing albums comes later and needs an exported folder or index (see [photo sources](PHOTO_SOURCES.md#product-implication)).
-3. Choose the slide interval, random pool size (100, 250, 500, or 1,000), and label mode (GPS location plus date, date only, or no label).
+3. Choose the slide interval, random pool size (100, 250, 500, or 1,000), and label mode (place name plus date, date only, or no label). Place names are best effort; GPS coordinates appear when Android cannot resolve one.
 4. Preview the slideshow immediately.
 5. Make the app the system screensaver so it starts on idle. On this TV that is a one-time `adb` setup plus the TCL Auto Launch permission, not a settings menu choice (see [device testing](DEVICE_TESTING.md#setup-sequence)).
 
@@ -33,5 +33,5 @@ Show personal photos on a TCL Google TV as a slideshow. The user can choose whic
 - Default SMB source is `Photos Library.photoslibrary/originals`. The user accepts that it can include hidden and recently deleted photos, and does not want a separate warning or opt-in. Originals are unedited; the user may change the configured folder to an export folder later.
 - Decide how to provide Photos album membership over SMB. A Mac-side export into named folders is the first candidate; the TV must not infer albums from the library package's internal directories or database.
 - Determine whether all intended originals are present locally: check Photos → Settings → iCloud on the Mac mini for "Download Originals to this Mac" versus "Optimize Mac Storage".
-- Whether to add place-name reverse geocoding for EXIF GPS coordinates; current labels show coordinates and date.
+- Confirm the coordinate fallback when the TV provider cannot resolve a place. A temporary GPS-tagged bundled sample and a real SMB JPEG both resolved to place names on the TCL TV; see [device testing](DEVICE_TESTING.md#device-findings).
 - Whether display images should be cached on the TV for offline playback, and for how long.

@@ -35,6 +35,7 @@ class BundledSamplePhotoSource(
     private val targetWidth: Int,
     private val targetHeight: Int,
     private val labelMode: PhotoLabelMode = PhotoLabelMode.default,
+    private val placeNameLookup: ((Double, Double) -> String?)? = null,
 ) : PhotoSource {
     private val resourceIds = mapOf(
         "sample_mountain_lake" to R.drawable.sample_mountain_lake,
@@ -57,12 +58,18 @@ class BundledSamplePhotoSource(
             open = { resources.openRawResource(resourceId) },
             includeLocation = labelMode == PhotoLabelMode.LOCATION_AND_DATE,
             includeDate = labelMode != PhotoLabelMode.NONE,
+            placeNameLookup = placeNameLookup,
         )
         return LoadedPhoto(bitmap, label)
     }
 }
 
-internal fun readExifLabel(open: () -> InputStream, includeLocation: Boolean, includeDate: Boolean): String? {
+internal fun readExifLabel(
+    open: () -> InputStream,
+    includeLocation: Boolean,
+    includeDate: Boolean,
+    placeNameLookup: ((Double, Double) -> String?)? = null,
+): String? {
     if (!includeLocation && !includeDate) return null
     return runCatching {
         val exif = open().use { stream ->
@@ -73,7 +80,8 @@ internal fun readExifLabel(open: () -> InputStream, includeLocation: Boolean, in
         val location = if (includeLocation) {
             val coordinates = FloatArray(2)
             if (exif.getLatLong(coordinates)) {
-                String.format(Locale.US, "%.4f°, %.4f°", coordinates[0], coordinates[1])
+                placeNameLookup?.invoke(coordinates[0].toDouble(), coordinates[1].toDouble())
+                    ?: String.format(Locale.US, "%.4f°, %.4f°", coordinates[0], coordinates[1])
             } else {
                 null
             }
