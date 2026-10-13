@@ -22,7 +22,7 @@ class SlideshowPlayer(
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "photo-source-loader").apply { isDaemon = true }
     }
-    private var slides: List<Slide> = emptyList()
+    private val slides = mutableListOf<Slide>()
     private var currentIndex = 0
     private var active = false
     private var disposed = false
@@ -45,7 +45,8 @@ class SlideshowPlayer(
                 if (!isCurrent(runGeneration)) return@post
                 result.fold(
                     onSuccess = { loadedSlides ->
-                        slides = loadedSlides
+                        slides.clear()
+                        slides.addAll(loadedSlides)
                         currentIndex = 0
                         if (slides.isEmpty()) {
                             showEmptyState()
@@ -74,7 +75,7 @@ class SlideshowPlayer(
         pending = null
         scheduler.stop()
         loadingImage = false
-        slides = emptyList()
+        slides.clear()
     }
 
     fun dispose() {
@@ -91,7 +92,7 @@ class SlideshowPlayer(
     }
 
     private fun loadSlide(index: Int, runGeneration: Int) {
-        if (loadingImage) return
+        if (!active || loadingImage || index !in slides.indices) return
         val slide = slides[index]
         loadingImage = true
         pending = worker.submit {
@@ -100,18 +101,33 @@ class SlideshowPlayer(
                 if (!isCurrent(runGeneration)) return@post
                 loadingImage = false
                 result.fold(
-                    onSuccess = { bitmap -> showSlide(slide, bitmap) },
+                    onSuccess = { photo ->
+                        showSlide(slide.copy(description = photo.label.orEmpty()), photo.bitmap)
+                        if (!schedulerStarted) {
+                            schedulerStarted = true
+                            scheduler.start()
+                        }
+                    },
                     onFailure = { error ->
-                        Log.w(LOG_TAG, "Photo load failed (${error.javaClass.simpleName})")
-                        showError("Could not load this photo. It may be unavailable or unsupported.")
+                        Log.w(LOG_TAG, "Skipping unreadable photo (${error.javaClass.simpleName})")
+                        skipUnreadableSlide(index, slide, runGeneration)
                     },
                 )
-                if (!schedulerStarted) {
-                    schedulerStarted = true
-                    scheduler.start()
-                }
             }
         }
+    }
+
+    private fun skipUnreadableSlide(index: Int, slide: Slide, runGeneration: Int) {
+        if (!isCurrent(runGeneration) || slides.getOrNull(index) != slide) return
+        slides.removeAt(index)
+        if (slides.isEmpty()) {
+            scheduler.stop()
+            showError("Could not load any photos. They may be unavailable or unsupported.")
+            return
+        }
+
+        currentIndex = if (index < slides.size) index else 0
+        loadSlide(currentIndex, runGeneration)
     }
 
     private fun isCurrent(runGeneration: Int): Boolean = active && generation == runGeneration

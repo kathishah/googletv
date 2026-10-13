@@ -15,7 +15,7 @@ Settle these before generating the Gradle project (roadmap milestone 2) and reco
 | `targetSdk`, `compileSdk`, AGP, Kotlin | Open | Choose from current official Android documentation, not by guessing. |
 | Settings UI toolkit | Open | Compose for TV or Android Views. Check current official TV guidance before choosing. |
 | Slideshow renderer | Proposed: plain Android `View` | `DreamService` is not a `LifecycleOwner`; hosting Compose inside it requires wiring lifecycle and saved-state owners by hand. A plain `View` renderer works the same in the activity and the dream. |
-| Image decoding | Open | Platform `ImageDecoder` or an image-loading library. Must downsample to display size, honor EXIF orientation, and decode HEIC. |
+| Image decoding and metadata | Implemented: platform `BitmapFactory` sampled decode and `android.media.ExifInterface` labels | Decode at display resolution and read embedded GPS/date metadata when requested. EXIF orientation and HEIC support still need TV validation. |
 | SMB client library | SMBJ 0.15.0 | Supports SMB2/3 and explicit Guest auth. SMBJ rejects Guest when the server requires signing. With the Mac mini's signing requirement turned off, the TV listed and displayed photos from the share; see [the server change](PHOTO_SOURCES.md#mac-mini-signing-change-2026-10-12). |
 
 ## Screensaver components
@@ -28,7 +28,7 @@ Settle these before generating the Gradle project (roadmap milestone 2) and reco
 | Renderer | Display the current image and transitions; shared by the activity and the dream |
 | Photo source interface | Supply image references independently of the renderer |
 | Photo index | Saved list of image references for a source, refreshed in the background so the dream never scans the share on start |
-| Settings store | Persist interval and source choices |
+| Settings store | Persist interval, source configuration, random pool size, and label mode |
 | Source adapters | Local test images first; read-only SMB files next |
 
 Both the TV activity and `DreamService` should use the same slideshow controller and renderer. The dream must release work in `onDreamingStopped` and `onDetachedFromWindow`. Keep source authorization separate from the dream UI; a screensaver should never launch a sign-in flow while idle. Preload the next image before its transition so the screen never shows a blank frame.

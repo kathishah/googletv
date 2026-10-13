@@ -22,6 +22,10 @@ class MainActivity : Activity() {
     private lateinit var preferences: SlideshowPreferences
     private lateinit var intervalSummary: TextView
     private lateinit var intervalButtons: LinearLayout
+    private lateinit var photoPoolSummary: TextView
+    private lateinit var photoPoolButtons: LinearLayout
+    private lateinit var photoLabelSummary: TextView
+    private lateinit var photoLabelButtons: LinearLayout
     private lateinit var sampleSourceButton: Button
     private lateinit var smbSourceButton: Button
     private lateinit var smbFields: List<EditText>
@@ -38,6 +42,8 @@ class MainActivity : Activity() {
         settingsScreen = buildScreen()
         setContentView(settingsScreen)
         refreshIntervalControls()
+        refreshPhotoPoolControls()
+        refreshPhotoLabelControls()
         refreshSourceControls()
     }
 
@@ -128,6 +134,34 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         content.addView(intervalButtons)
+
+        content.addView(text(getString(R.string.photo_pool_title), 22f, true).apply {
+            setPadding(0, dp(16), 0, 0)
+        })
+        photoPoolSummary = text("", 18f, false).apply {
+            setTextColor(Color.rgb(190, 204, 218))
+            setPadding(0, dp(6), 0, dp(10))
+        }
+        content.addView(photoPoolSummary)
+        photoPoolButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        content.addView(photoPoolButtons)
+
+        content.addView(text(getString(R.string.photo_label_title), 22f, true).apply {
+            setPadding(0, dp(16), 0, 0)
+        })
+        photoLabelSummary = text("", 18f, false).apply {
+            setTextColor(Color.rgb(190, 204, 218))
+            setPadding(0, dp(6), 0, dp(10))
+        }
+        content.addView(photoLabelSummary)
+        photoLabelButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        content.addView(photoLabelButtons)
 
         val previewButton = button(getString(R.string.preview_slideshow)) {
             enterPreview()
@@ -244,6 +278,46 @@ class MainActivity : Activity() {
             selectedButton.post { selectedButton.requestFocus() }
         }
     }
+
+    private fun refreshPhotoPoolControls() {
+        val selected = preferences.photoPoolSize()
+        photoPoolSummary.text = getString(R.string.current_photo_pool, selected.label)
+        photoPoolButtons.removeAllViews()
+        PhotoPoolSize.all.forEach { size ->
+            val selectedSize = size == selected
+            val option = button(size.label) {
+                preferences.setPhotoPoolSize(size)
+                refreshPhotoPoolControls()
+            }.apply {
+                setBackgroundTintList(ColorStateList.valueOf(if (selectedSize) SELECTED_COLOR else BUTTON_COLOR))
+            }
+            photoPoolButtons.addView(option, compactOptionLayout())
+            if (selectedSize) option.post { option.requestFocus() }
+        }
+    }
+
+    private fun refreshPhotoLabelControls() {
+        val selected = preferences.photoLabelMode()
+        photoLabelSummary.text = getString(R.string.current_photo_label, selected.label)
+        photoLabelButtons.removeAllViews()
+        PhotoLabelMode.all.forEach { mode ->
+            val selectedMode = mode == selected
+            val option = button(mode.label) {
+                preferences.setPhotoLabelMode(mode)
+                refreshPhotoLabelControls()
+            }.apply {
+                setBackgroundTintList(ColorStateList.valueOf(if (selectedMode) SELECTED_COLOR else BUTTON_COLOR))
+            }
+            photoLabelButtons.addView(option, compactOptionLayout())
+            if (selectedMode) option.post { option.requestFocus() }
+        }
+    }
+
+    private fun compactOptionLayout() = LinearLayout.LayoutParams(
+        0,
+        dp(60),
+        1f,
+    ).apply { marginEnd = dp(8) }
 
     private fun button(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label

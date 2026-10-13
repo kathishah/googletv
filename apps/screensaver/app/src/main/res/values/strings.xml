@@ -8,9 +8,13 @@
     <string name="smb_host_hint">SMB server address</string>
     <string name="smb_share_hint">Share name (default: Photos)</string>
     <string name="smb_path_hint">Folder inside share</string>
-    <string name="smb_source_note">Read-only Guest access. The folder is scanned recursively; up to 250 supported photos are shown.</string>
+    <string name="smb_source_note">Read-only Guest access. Supported photos are sampled randomly from the whole folder tree.</string>
     <string name="smb_config_error">Check the server address, share name, and folder path.</string>
     <string name="slide_interval_title">Slide interval</string>
+    <string name="photo_pool_title">Random photo pool</string>
+    <string name="current_photo_pool">Randomly show up to %1$s supported photos</string>
+    <string name="photo_label_title">Photo label</string>
+    <string name="current_photo_label">Label: %1$s</string>
     <string name="preview_slideshow">Preview slideshow</string>
     <string name="current_interval">Current interval: %1$s</string>
     <string name="empty_photo_state">No photos are available yet</string>

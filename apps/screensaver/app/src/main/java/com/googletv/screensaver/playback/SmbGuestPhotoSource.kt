@@ -1,6 +1,7 @@
 package com.googletv.screensaver.playback
 
 import android.graphics.Bitmap
+import com.googletv.screensaver.PhotoLabelMode
 import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2CreateDisposition
@@ -15,6 +16,7 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.util.ArrayDeque
 import java.util.EnumSet
+import kotlin.random.Random
 import java.util.concurrent.TimeUnit
 
 data class SmbSourceConfig(
@@ -28,7 +30,8 @@ class SmbGuestPhotoSource(
     config: SmbSourceConfig,
     private val targetWidth: Int,
     private val targetHeight: Int,
-    private val maxSlides: Int = MAX_SLIDES_PER_SCAN,
+    private val poolSize: Int = DEFAULT_POOL_SIZE,
+    private val labelMode: PhotoLabelMode = PhotoLabelMode.default,
 ) : PhotoSource {
     private val host = config.host.trim()
     private val shareName = config.share.trim()
@@ -42,7 +45,7 @@ class SmbGuestPhotoSource(
             "Enter a valid SMB share name."
         }
         require(rootPath.isNotEmpty()) { "Enter a folder path inside the SMB share." }
-        require(maxSlides > 0)
+        require(poolSize > 0)
     }
 
     override fun loadSlides(): List<Slide> = withDiskShare { diskShare ->
@@ -50,7 +53,8 @@ class SmbGuestPhotoSource(
         val slides = mutableListOf<Slide>()
         directories.add(rootPath)
 
-        while (directories.isNotEmpty() && slides.size < maxSlides) {
+        var supportedPhotoCount = 0
+        while (directories.isNotEmpty()) {
             val directory = directories.removeFirst()
             for (entry in diskShare.list(directory)) {
                 val name = entry.fileName
@@ -61,20 +65,34 @@ class SmbGuestPhotoSource(
                 if (isDirectory) {
                     directories.addLast(path)
                 } else if (isSupportedPhoto(name)) {
-                    slides += Slide(path, "Photo ${slides.size + 1}")
-                    if (slides.size >= maxSlides) break
+                    supportedPhotoCount += 1
+                    val candidate = Slide(path, "Photo $supportedPhotoCount")
+                    if (slides.size < poolSize) {
+                        slides += candidate
+                    } else {
+                        val replacementIndex = Random.nextInt(supportedPhotoCount)
+                        if (replacementIndex < poolSize) slides[replacementIndex] = candidate
+                    }
                 }
             }
         }
+        slides.shuffle()
         slides
     }
 
-    override fun loadImage(slide: Slide): Bitmap = withDiskShare { diskShare ->
-        decodeSampledBitmap(
-            open = { openReadOnlyFile(diskShare, slide.id) },
+    override fun loadImage(slide: Slide): LoadedPhoto = withDiskShare { diskShare ->
+        val open = { openReadOnlyFile(diskShare, slide.id) }
+        val label = readExifLabel(
+            open = open,
+            includeLocation = labelMode == PhotoLabelMode.LOCATION_AND_DATE,
+            includeDate = labelMode != PhotoLabelMode.NONE,
+        )
+        val bitmap = decodeSampledBitmap(
+            open = open,
             targetWidth = targetWidth,
             targetHeight = targetHeight,
         )
+        LoadedPhoto(bitmap, label)
     }
 
     private fun openReadOnlyFile(diskShare: DiskShare, path: String): InputStream {
@@ -129,7 +147,7 @@ class SmbGuestPhotoSource(
     }
 
     companion object {
-        const val MAX_SLIDES_PER_SCAN = 250
+        const val DEFAULT_POOL_SIZE = 250
         private const val SMB_PORT = 445
         private const val SMB_TIMEOUT_SECONDS = 15L
         private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")

@@ -48,14 +48,15 @@ Exit: the [first build acceptance criteria](PRODUCT.md#first-build-acceptance-cr
 
 ## 4. Read-only SMB Photos source
 
-Status: in progress. The user chose the library's `originals` folder and accepts hidden/recently deleted photos without a separate warning. Async photo loading and a read-only explicit Guest adapter are implemented. The first TV tests failed because the macOS server required message signing, which SMBJ cannot combine with Guest. After the Mac mini's `SigningRequired` preference was turned off, the TV's manual preview displayed photos from the share, and the app DreamService started on idle and displayed its first SMB photo (see [the server change](PHOTO_SOURCES.md#mac-mini-signing-change-2026-10-12) and [device tests](DEVICE_TESTING.md#device-test-log)). Confirm multi-photo progression and HEIC display in dream mode; an index remains to be done.
+Status: in progress. The user chose the library's `originals` folder and accepts hidden/recently deleted photos without a separate warning. Async photo loading and a read-only explicit Guest adapter are implemented. After the Mac mini's `SigningRequired` preference was turned off, TV manual preview could read and advance through SMB photos. The TV also started the app DreamService on idle and displayed its first SMB photo (see [the server change](PHOTO_SOURCES.md#mac-mini-signing-change-2026-10-12) and [device tests](DEVICE_TESTING.md#device-test-log)). Random full-tree sampling and EXIF date labels are verified in manual preview. Multi-photo progression and HEIC display in DreamService remain unverified; a persistent index remains future work.
 
 - Use the full `originals` directory by default per the user's choice; it includes hidden and recently deleted photos and unedited originals. A Mac-side export folder can be selected later.
 - Done: resolved the SMB signing/Guest incompatibility server-side with the Mac mini's `SigningRequired=false` preference, applied via Apple's stop, sync, and start sequence. Client-side SMB2-only and `withSigningRequired(false)` options did not help. If a macOS update restores required signing, recheck with `tools/check_smb_signing.py`; the fallback is a dedicated read-only account. Do not rely on obsolete SMB1.
 - Configure the TV with the Mac mini SMB host, `Photos` share, and an explicit SMB authentication mode. The tested share allows read-only Guest access; support Guest without saving a username or password. If registered-user access is offered, store credentials only on the TV. Anonymous SMB is a separate mode and was rejected by the server during testing.
-- Build a saved file index refreshed in the background; the dream reads the index rather than scanning the share on start.
-- Verify TV-side enumeration of supported image files below the chosen root without writing to the share or reading the Photos database. Current prototype caps a scan at 250 images and does not yet persist an index.
-- Downsample images, honor EXIF orientation, skip unsupported files, preload the next image, and show a clear state when the share or the `Samsung_T5` drive is unavailable.
+- Build a saved file index refreshed in the background; the dream currently rescans the share on start.
+- Done: scan the full configured tree and uniformly sample up to the selected 100, 250, 500, or 1,000 supported images, then shuffle the selected pool. The scan remains uncached, so it runs again at slideshow start.
+- Done: skip images that fail to load during playback. TV preview showed unreadable SMB files being skipped while the slideshow continued. Remaining playback work: honor EXIF orientation, preload the next image, and show a clear state when the share or the `Samsung_T5` drive is unavailable. Images are already downsampled to display resolution.
+- Done: configurable labels for EXIF GPS coordinates plus capture date, capture date only, or no label. Missing metadata components are omitted. Place-name reverse geocoding remains future work.
 - Test JPEG and HEIC display on the TCL TV.
 - For album selection, use exported album folders or a separate album index on the SMB share. Do not treat package directories as albums.
 
@@ -67,7 +68,7 @@ Status: in progress. The user chose the library's `originals` folder and accepts
 
 ## 6. Polish
 
-- Add shuffle/order controls, transitions, image metadata options, and test on the actual TV over long sessions.
+- Add transitions and test randomized selection and metadata labels in DreamService over long sessions.
 
 ## Backlog
 

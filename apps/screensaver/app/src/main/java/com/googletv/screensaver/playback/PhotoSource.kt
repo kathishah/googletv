@@ -3,8 +3,14 @@ package com.googletv.screensaver.playback
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
+import com.googletv.screensaver.PhotoLabelMode
 import com.googletv.screensaver.R
+import java.io.BufferedInputStream
 import java.io.InputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class Slide(
     val id: String,
@@ -19,13 +25,16 @@ data class Slide(
 interface PhotoSource {
     fun loadSlides(): List<Slide>
 
-    fun loadImage(slide: Slide): Bitmap
+    fun loadImage(slide: Slide): LoadedPhoto
 }
+
+data class LoadedPhoto(val bitmap: Bitmap, val label: String?)
 
 class BundledSamplePhotoSource(
     private val resources: Resources,
     private val targetWidth: Int,
     private val targetHeight: Int,
+    private val labelMode: PhotoLabelMode = PhotoLabelMode.default,
 ) : PhotoSource {
     private val resourceIds = mapOf(
         "sample_mountain_lake" to R.drawable.sample_mountain_lake,
@@ -37,14 +46,50 @@ class BundledSamplePhotoSource(
         Slide("sample_redwood_forest", "Redwood forest trail"),
     )
 
-    override fun loadImage(slide: Slide): Bitmap {
+    override fun loadImage(slide: Slide): LoadedPhoto {
         val resourceId = resourceIds[slide.id] ?: error("Unknown bundled slide")
-        return decodeSampledBitmap(
+        val bitmap = decodeSampledBitmap(
             open = { resources.openRawResource(resourceId) },
             targetWidth = targetWidth,
             targetHeight = targetHeight,
         )
+        val label = readExifLabel(
+            open = { resources.openRawResource(resourceId) },
+            includeLocation = labelMode == PhotoLabelMode.LOCATION_AND_DATE,
+            includeDate = labelMode != PhotoLabelMode.NONE,
+        )
+        return LoadedPhoto(bitmap, label)
     }
+}
+
+internal fun readExifLabel(open: () -> InputStream, includeLocation: Boolean, includeDate: Boolean): String? {
+    if (!includeLocation && !includeDate) return null
+    return runCatching {
+        val exif = open().use { stream ->
+            BufferedInputStream(stream).use {
+                ExifInterface(it, ExifInterface.STREAM_TYPE_FULL_IMAGE_DATA)
+            }
+        }
+        val location = if (includeLocation) {
+            val coordinates = FloatArray(2)
+            if (exif.getLatLong(coordinates)) {
+                String.format(Locale.US, "%.4f°, %.4f°", coordinates[0], coordinates[1])
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+        val date = if (includeDate) {
+            val timestamp = exif.dateTimeOriginal.takeIf { it >= 0 } ?: exif.dateTime
+            timestamp.takeIf { it >= 0 }?.let {
+                SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(it))
+            }
+        } else {
+            null
+        }
+        listOfNotNull(location, date).joinToString(" · ").ifEmpty { null }
+    }.getOrNull()
 }
 
 internal fun decodeSampledBitmap(

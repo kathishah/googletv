@@ -12,11 +12,14 @@ object PhotoSourceFactory {
                 context.resources,
                 metrics.widthPixels,
                 metrics.heightPixels,
+                preferences.photoLabelMode(),
             )
             PhotoSourceMode.SMB_GUEST -> SmbGuestPhotoSource(
                 preferences.smbSourceConfig(),
                 metrics.widthPixels,
                 metrics.heightPixels,
+                preferences.photoPoolSize().count,
+                preferences.photoLabelMode(),
             )
         }
     }

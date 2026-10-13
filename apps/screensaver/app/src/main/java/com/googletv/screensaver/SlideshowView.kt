@@ -40,7 +40,11 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
     fun show(slide: Slide, bitmap: Bitmap) {
         image.setImageBitmap(bitmap)
-        image.contentDescription = slide.description
+        image.contentDescription = slide.description.ifBlank { "Slideshow photo" }
+        if (slide.description.isBlank()) {
+            caption.visibility = View.GONE
+            return
+        }
         caption.text = slide.description
         caption.gravity = Gravity.BOTTOM or Gravity.START
         caption.textSize = 18f
