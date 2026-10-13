@@ -41,13 +41,36 @@ Still to check on the Mac mini: Photos → Settings → iCloud, "Download Origin
 - **Edits are not applied.** Crops, rotations, and adjustments made in Photos live elsewhere in the package; `originals` holds unedited files.
 - Screenshots, document scans, receipts, and Live Photo `.mov` companion files are mixed in with ordinary photos.
 
-An "all of originals" slideshow on a shared living-room TV will therefore show hidden and deleted photos. Before enabling it, decide whether to accept that or use a Mac-side export into a separate folder as the default source. An export folder fixes four things at once: album selection, hidden and deleted photos, applied edits, and photos that exist only in iCloud. The TV reads it over the same SMB share.
+An "all of originals" slideshow on a shared living-room TV can therefore show hidden and recently deleted photos. The user chose `originals` as the default for this personal app and does not want a separate warning or opt-in. An export folder remains an alternative if album selection, hidden/deleted filtering, applied edits, or photos that exist only in iCloud are needed. The TV reads it over the same SMB share.
 
 ### SMB authentication test (2026-10-11)
 
 The Mac mini's `Photos` share is configured for SMB Guest access and read-only access. From the development Mac, an explicit Guest mount (`//guest:@<host>/Photos`) could read the library's `originals` directory and three sample images; the recursive inventory completed. The share listing probe also accepted Guest access. Current-session authentication and anonymous-only access were rejected. This establishes that the server accepts SMB Guest access, not anonymous access; an Android SMB client must offer an explicit Guest mode (or equivalent guest credentials). Do not treat an arbitrary username with a blank password as Guest. This was tested from the development Mac, not the TV, and does not establish that the app's SMB client works on the TV. SMB1 is obsolete and insecure, and macOS file sharing is built around SMB2/3, so the Android client library must support SMB2 or later.
 
 Because the share is readable by Guest, any device on a network that can reach the Mac mini's SMB service may be able to read its contents. Keep the share read-only and limit network reachability to the intended local network.
+
+### Android TV client check (2026-10-12)
+
+The read-only Android adapter uses SMBJ 0.15.0 with its explicit Guest authentication mode. Initial TV tests failed during SMB session setup with `SMB2GuestSigningRequiredException`; they did not reach share listing or image reads. SMBJ refuses a Guest session when the server advertises message signing as required. This matches [SMBJ issue 554](https://github.com/hierynomus/smbj/issues/554), which reports the same Guest/signing incompatibility with a macOS file server. The 0.15.0 source retains this check. Enabling SMBJ's multi-protocol negotiate option alone did not change the TV result. The issue tracker suggests combining that option with `withSigningRequired(false)`; testing that exact combination on the TV still failed with the same exception. Restricting the Android client to SMB 2.0.2/2.1 dialects also failed with the same exception, so that restriction was removed. A separate development-Mac probe with jcifs-ng 2.1.9 also failed authentication, so it is not a validated replacement.
+
+Apple's [SMB troubleshooting note for Macs bound to Open Directory](https://support.apple.com/en-ae/101956) says macOS uses SMB3 by default and documents configuring the SMB server to accept SMB2 only by setting `ProtocolVersionMap` to `2`. The article is specifically about Open Directory binding/authentication problems, which have not been established on this Mac mini; it is not yet a confirmed fix for this Guest-signing failure. SMB2-only also removes SMB3 support and associated security features. An additional community-reported workaround is the macOS server preference `SigningRequired=false` in `/Library/Preferences/SystemConfiguration/com.apple.smb.server`; Apple documents it only in an archived article for older macOS versions; it was later tested and worked (see [the server change](#mac-mini-signing-change-2026-10-12)). After the server change, the TV successfully listed and read photos during manual preview. Its DreamService started on idle and displayed the first SMB photo. Multi-photo progression and HEIC rendering in dream mode remain to be verified. The bundled sample-photo preview still works after moving source listing and decoding to the background.
+
+### Mac mini signing change (2026-10-12)
+
+The cause was server-side. In SMBJ 0.15.0, a session requires signing when either the client config or the server's NEGOTIATE `SecurityMode` requires it. A Guest session with signing required throws `SMB2GuestSigningRequiredException`. `withSigningRequired(false)` only clears the client half, so no client option could avoid it. An unauthenticated NEGOTIATE probe (`tools/check_smb_signing.py`) showed the Mac mini reporting signing as required at SMB 3.0.2. Apple's own client still mounted the share as Guest, so macOS tolerates unsigned Guest sessions despite advertising the requirement.
+
+Apple does document the server preference, in an archived article that applies to macOS 10.13.3 and earlier: [Turn off packet signing for SMB 2 and SMB 3 connections](https://support.apple.com/en-us/101442). It still works on the current macOS when applied with Apple's sequence. Writing the key and running `launchctl kickstart -k system/com.apple.smbd` was not enough. On the Mac mini (user-operated, with the original plist backed up first):
+
+```sh
+sudo launchctl disable system/com.apple.smbd
+sudo launchctl bootout system/com.apple.smbd
+sudo defaults write /Library/Preferences/SystemConfiguration/com.apple.smb.server SigningRequired -bool false
+sudo /usr/libexec/smb-sync-preferences
+sudo launchctl enable system/com.apple.smbd
+sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.smbd.plist
+```
+
+The probe then reported `SIGNING_REQUIRED=False`, and the unchanged TV build displayed photos from the share through SMBJ's explicit Guest mode. The user accepted the trade-off: the change applies to every SMB client of the Mac mini, and sessions are unsigned, on the basis that the share is read-only and reachable only on the home LAN. A macOS update may restore the default. Rerun the probe if the TV source stops connecting. To revert, run `sudo defaults delete /Library/Preferences/SystemConfiguration/com.apple.smb.server SigningRequired` within the same stop, sync, and start sequence. The dedicated read-only account remains the fallback if the preference stops working.
 
 ## Product implication
 

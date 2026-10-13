@@ -3,6 +3,7 @@ package com.googletv.screensaver
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Bitmap
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -37,8 +38,8 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         )
     }
 
-    fun show(slide: Slide) {
-        image.setImageResource(slide.imageResource)
+    fun show(slide: Slide, bitmap: Bitmap) {
+        image.setImageBitmap(bitmap)
         image.contentDescription = slide.description
         caption.text = slide.description
         caption.gravity = Gravity.BOTTOM or Gravity.START
@@ -53,9 +54,23 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
     fun showEmptyState() {
         image.setImageDrawable(null)
-        caption.text = context.getString(R.string.empty_photo_state)
+        showStatus(context.getString(R.string.empty_photo_state), 24f)
+    }
+
+    fun showLoadingState() {
+        image.setImageDrawable(null)
+        showStatus(context.getString(R.string.loading_photos), 22f)
+    }
+
+    fun showErrorState(message: String) {
+        image.setImageDrawable(null)
+        showStatus(message, 20f)
+    }
+
+    private fun showStatus(message: String, size: Float) {
+        caption.text = message
         caption.gravity = Gravity.CENTER
-        caption.textSize = 24f
+        caption.textSize = size
         caption.layoutParams = (caption.layoutParams as LayoutParams).apply {
             width = LayoutParams.MATCH_PARENT
             height = LayoutParams.MATCH_PARENT

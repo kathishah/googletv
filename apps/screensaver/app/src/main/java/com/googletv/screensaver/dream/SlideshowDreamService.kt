@@ -3,7 +3,7 @@ package com.googletv.screensaver.dream
 import android.service.dreams.DreamService
 import com.googletv.screensaver.SlideshowPreferences
 import com.googletv.screensaver.SlideshowView
-import com.googletv.screensaver.playback.BundledSamplePhotoSource
+import com.googletv.screensaver.playback.PhotoSourceFactory
 import com.googletv.screensaver.playback.SlideshowPlayer
 
 class SlideshowDreamService : DreamService() {
@@ -19,10 +19,12 @@ class SlideshowDreamService : DreamService() {
         slideshowView = SlideshowView(this)
         setContentView(slideshowView)
         player = SlideshowPlayer(
-            photoSource = BundledSamplePhotoSource(),
+            photoSource = PhotoSourceFactory.create(this, SlideshowPreferences(this)),
             intervalMillis = SlideshowPreferences(this)::intervalMillis,
             showSlide = slideshowView::show,
+            showLoading = slideshowView::showLoadingState,
             showEmptyState = slideshowView::showEmptyState,
+            showError = slideshowView::showErrorState,
         )
     }
 
@@ -37,7 +39,7 @@ class SlideshowDreamService : DreamService() {
     }
 
     override fun onDetachedFromWindow() {
-        if (::player.isInitialized) player.stop()
+        if (::player.isInitialized) player.dispose()
         super.onDetachedFromWindow()
     }
 }

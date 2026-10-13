@@ -14,3 +14,7 @@ android {
         versionName = "0.1.0"
     }
 }
+
+dependencies {
+    implementation("com.hierynomus:smbj:0.15.0")
+}
