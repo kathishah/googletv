@@ -46,6 +46,8 @@ class SlideshowView(context: Context) : FrameLayout(context) {
             return
         }
         caption.text = slide.description
+        caption.setTextColor(Color.argb(218, 255, 255, 255))
+        caption.setShadowLayer(3f, 1f, 1f, Color.argb(112, 0, 0, 0))
         caption.gravity = Gravity.BOTTOM or Gravity.START
         caption.textSize = 18f
         caption.layoutParams = (caption.layoutParams as LayoutParams).apply {
@@ -73,6 +75,8 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
     private fun showStatus(message: String, size: Float) {
         caption.text = message
+        caption.setTextColor(Color.WHITE)
+        caption.setShadowLayer(4f, 1f, 1f, Color.BLACK)
         caption.gravity = Gravity.CENTER
         caption.textSize = size
         caption.layoutParams = (caption.layoutParams as LayoutParams).apply {
