@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "PhotoScreensaver"
 include(":app")
+include(":heif-probe")
+project(":heif-probe").projectDir = file("../../tools/heif_tile_prototype/android")
