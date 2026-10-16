@@ -11,6 +11,7 @@
 #include <vector>
 
 #ifdef __ANDROID__
+#include <android/bitmap.h>
 #include <jni.h>
 #endif
 
@@ -181,6 +182,58 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
 #ifdef __ANDROID__
 
 static std::string g_last_info;
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_googletv_screensaver_playback_NativeHeifDecoder_decodeInto(
+    JNIEnv* env, jobject, jstring path, jobject bitmap) {
+    if (path == nullptr || bitmap == nullptr) {
+        return env->NewStringUTF("FAIL invalid input");
+    }
+
+    AndroidBitmapInfo bitmap_info{};
+    if (AndroidBitmap_getInfo(env, bitmap, &bitmap_info) != ANDROID_BITMAP_RESULT_SUCCESS ||
+        bitmap_info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        bitmap_info.width == 0 || bitmap_info.height == 0 ||
+        static_cast<int64_t>(bitmap_info.width) * bitmap_info.height > 16 * 1024 * 1024) {
+        return env->NewStringUTF("FAIL unsupported bitmap");
+    }
+
+    const char* utf_path = env->GetStringUTFChars(path, nullptr);
+    if (utf_path == nullptr) return env->NewStringUTF("FAIL input path unavailable");
+
+    ProbeResult result;
+    bool success = false;
+    try {
+        success = decode_tiles(utf_path, bitmap_info.width, bitmap_info.height, &result);
+    } catch (...) {
+        result.info = "native allocation or decoder exception";
+    }
+    env->ReleaseStringUTFChars(path, utf_path);
+    if (!success) {
+        return env->NewStringUTF(("FAIL " + result.info).c_str());
+    }
+
+    void* bitmap_pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &bitmap_pixels) != ANDROID_BITMAP_RESULT_SUCCESS ||
+        bitmap_pixels == nullptr) {
+        return env->NewStringUTF("FAIL could not lock output bitmap");
+    }
+    auto* output = static_cast<uint8_t*>(bitmap_pixels);
+    for (uint32_t y = 0; y < bitmap_info.height; ++y) {
+        auto* output_row = output + static_cast<size_t>(y) * bitmap_info.stride;
+        const auto* input_row = result.pixels.data() +
+            static_cast<size_t>(y) * bitmap_info.width;
+        for (uint32_t x = 0; x < bitmap_info.width; ++x) {
+            const uint32_t argb = input_row[x];
+            output_row[x * 4 + 0] = static_cast<uint8_t>((argb >> 16) & 0xff);
+            output_row[x * 4 + 1] = static_cast<uint8_t>((argb >> 8) & 0xff);
+            output_row[x * 4 + 2] = static_cast<uint8_t>(argb & 0xff);
+            output_row[x * 4 + 3] = 0xff;
+        }
+    }
+    AndroidBitmap_unlockPixels(env, bitmap);
+    return env->NewStringUTF(("PASS " + result.info).c_str());
+}
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_googletv_heiftileprobe_HeifTileProbeActivity_nativeDecode(

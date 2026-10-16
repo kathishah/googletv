@@ -45,6 +45,8 @@ class MainActivity : Activity() {
         refreshPhotoPoolControls()
         refreshPhotoLabelControls()
         refreshSourceControls()
+        val initialFocus = if (sourceMode == PhotoSourceMode.SMB_GUEST) smbSourceButton else sampleSourceButton
+        initialFocus.post { initialFocus.requestFocus() }
     }
 
     override fun onResume() {
@@ -86,7 +88,10 @@ class MainActivity : Activity() {
             setTextColor(Color.rgb(190, 204, 218))
             setPadding(0, dp(6), 0, dp(14))
         })
-
+        content.addView(text("Build ${BuildConfig.BUILD_TAG} · ${BuildConfig.BUILD_TIME}", 14f, false).apply {
+            setTextColor(Color.rgb(145, 160, 176))
+            setPadding(0, 0, 0, dp(14))
+        })
         content.addView(text(getString(R.string.photo_source_title), 22f, true))
         val sourceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -274,9 +279,6 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams(0, dp(60), 1f).apply { marginEnd = dp(10) },
             )
         }
-        intervalButtons.getChildAt(IntervalPreset.all.indexOf(selected))?.let { selectedButton ->
-            selectedButton.post { selectedButton.requestFocus() }
-        }
     }
 
     private fun refreshPhotoPoolControls() {
@@ -292,7 +294,6 @@ class MainActivity : Activity() {
                 setBackgroundTintList(ColorStateList.valueOf(if (selectedSize) SELECTED_COLOR else BUTTON_COLOR))
             }
             photoPoolButtons.addView(option, compactOptionLayout())
-            if (selectedSize) option.post { option.requestFocus() }
         }
     }
 
@@ -309,7 +310,6 @@ class MainActivity : Activity() {
                 setBackgroundTintList(ColorStateList.valueOf(if (selectedMode) SELECTED_COLOR else BUTTON_COLOR))
             }
             photoLabelButtons.addView(option, compactOptionLayout())
-            if (selectedMode) option.post { option.requestFocus() }
         }
     }
 

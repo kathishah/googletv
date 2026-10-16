@@ -1,6 +1,6 @@
 # HEIF grid tile prototype
 
-This isolated diagnostic app exercises libheif's per-tile API with a software HEVC decoder. It does not change the screensaver app's production photo decoder.
+The diagnostic app exercises libheif's per-tile API with a software HEVC decoder. The same pinned native decoder is linked into the screensaver app for large HEIF images. The production SMB-to-native path has been verified on the TV with landscape and portrait 24 MP photos. The probe remains useful for isolated decoder diagnostics.
 
 ## Build
 
@@ -53,6 +53,6 @@ For a TV display preview (defaults to six samples at 12 seconds each), run:
 python3 tools/heif_tile_prototype/run_tv_preview.py /path/to/read-only-smb-mount --count 6 --seconds 12
 ```
 
-The six-image preview was run after the batch and the user confirmed the images were correctly framed and upright. The staged source file and probe app were removed afterward, and the production app was restored. The batch result establishes broad decode coverage, but startup latency, memory use under sustained playback, color fidelity, and complete transform coverage remain open.
+The six-image preview was run after the batch and the user confirmed the images were correctly framed and upright. The staged source file and probe app were removed afterward, and the production app was restored. The batch result establishes broad decoder coverage, and the integrated app path has been verified with two real 24 MP orientations on the TV. Memory use under sustained playback, color fidelity, and broader transform coverage remain open.
 
 Temporary sample files should be removed from `/data/local/tmp` and the probe app's private files after the run.

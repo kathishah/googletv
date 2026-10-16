@@ -25,19 +25,29 @@ class SlideshowPlayer(
     }
     private val slides = mutableListOf<Slide>()
     private var currentIndex = 0
+    private var currentSlide: Slide? = null
     private var active = false
     private var disposed = false
     @Volatile private var generation = 0
     private var pending: Future<*>? = null
+    private var prepared: PreparedPhoto? = null
+    private var preloadingSlide: Slide? = null
+    private var advanceRequestedFor: Slide? = null
     private var schedulerStarted = false
     private var loadingImage = false
     private val scheduler = SlideshowScheduler(intervalMillis, ::showNextSlide)
+
+    private data class PreparedPhoto(val slide: Slide, val photo: LoadedPhoto)
 
     fun start() {
         if (active || disposed) return
         active = true
         schedulerStarted = false
         loadingImage = false
+        currentSlide = null
+        clearPreparedPhoto()
+        preloadingSlide = null
+        advanceRequestedFor = null
         val runGeneration = ++generation
         showLoading()
         pending = worker.submit {
@@ -76,6 +86,10 @@ class SlideshowPlayer(
         pending = null
         scheduler.stop()
         loadingImage = false
+        currentSlide = null
+        clearPreparedPhoto()
+        preloadingSlide = null
+        advanceRequestedFor = null
         slides.clear()
     }
 
@@ -87,9 +101,20 @@ class SlideshowPlayer(
     }
 
     private fun showNextSlide() {
-        if (!active || slides.isEmpty()) return
-        currentIndex = (currentIndex + 1) % slides.size
-        loadSlide(currentIndex, generation)
+        if (!active || slides.size < 2 || loadingImage) return
+        val nextIndex = (currentIndex + 1) % slides.size
+        val nextSlide = slides[nextIndex]
+        val ready = prepared?.takeIf { it.slide == nextSlide }
+        if (ready != null) {
+            prepared = null
+            advanceRequestedFor = null
+            presentSlide(nextIndex, nextSlide, ready.photo)
+            return
+        }
+
+        advanceRequestedFor = nextSlide
+        if (preloadingSlide == nextSlide) return
+        loadSlide(nextIndex, generation)
     }
 
     private fun loadSlide(index: Int, runGeneration: Int) {
@@ -99,28 +124,97 @@ class SlideshowPlayer(
         pending = worker.submit {
             val result = runCatching { photoSource.loadImage(slide) }
             mainHandler.post {
-                if (!isCurrent(runGeneration)) return@post
+                if (!isCurrent(runGeneration)) {
+                    result.getOrNull()?.bitmap?.recycle()
+                    return@post
+                }
                 loadingImage = false
+                pending = null
                 result.fold(
                     onSuccess = { photo ->
-                        showSlide(slide.copy(description = photo.label.orEmpty()), photo.bitmap)
-                        if (!schedulerStarted) {
-                            schedulerStarted = true
-                            scheduler.start()
+                        val actualIndex = slides.indexOf(slide)
+                        if (actualIndex < 0) {
+                            photo.bitmap.recycle()
+                        } else {
+                            advanceRequestedFor = null
+                            presentSlide(actualIndex, slide, photo)
                         }
                     },
                     onFailure = { error ->
-                        val status = error.safeSmbStatus()?.let { ", $it" }.orEmpty()
-                        Log.w(LOG_TAG, "Skipping unreadable photo (${error.javaClass.simpleName}$status)")
-                        skipUnreadableSlide(index, slide, runGeneration)
+                        val wasRequested = advanceRequestedFor == slide
+                        if (wasRequested) advanceRequestedFor = null
+                        handleUnreadableSlide(index, slide, error, runGeneration)
+                        if (wasRequested && isCurrent(runGeneration)) showNextSlide()
                     },
                 )
             }
         }
     }
 
-    private fun skipUnreadableSlide(index: Int, slide: Slide, runGeneration: Int) {
+    private fun presentSlide(index: Int, slide: Slide, photo: LoadedPhoto) {
+        currentIndex = index
+        currentSlide = slide
+        showSlide(slide.copy(description = photo.label.orEmpty()), photo.bitmap)
+        if (!schedulerStarted) {
+            schedulerStarted = true
+            scheduler.start()
+        } else {
+            scheduler.resetInterval()
+        }
+        preloadNextSlide(generation)
+    }
+
+    private fun preloadNextSlide(runGeneration: Int) {
+        if (!isCurrent(runGeneration) || slides.size < 2 || loadingImage ||
+            preloadingSlide != null || prepared != null
+        ) return
+        val nextIndex = (currentIndex + 1) % slides.size
+        val slide = slides[nextIndex]
+        preloadingSlide = slide
+        pending = worker.submit {
+            val result = runCatching { photoSource.loadImage(slide) }
+            mainHandler.post {
+                if (!isCurrent(runGeneration)) {
+                    result.getOrNull()?.bitmap?.recycle()
+                    return@post
+                }
+                preloadingSlide = null
+                pending = null
+                val actualIndex = slides.indexOf(slide)
+                if (actualIndex < 0) {
+                    result.getOrNull()?.bitmap?.recycle()
+                    return@post
+                }
+                result.fold(
+                    onSuccess = { photo ->
+                        if (advanceRequestedFor == slide) {
+                            advanceRequestedFor = null
+                            presentSlide(actualIndex, slide, photo)
+                        } else {
+                            prepared = PreparedPhoto(slide, photo)
+                        }
+                    },
+                    onFailure = { error ->
+                        val wasRequested = advanceRequestedFor == slide
+                        if (wasRequested) advanceRequestedFor = null
+                        handleUnreadableSlide(actualIndex, slide, error, runGeneration)
+                        if (wasRequested && isCurrent(runGeneration)) showNextSlide()
+                    },
+                )
+            }
+        }
+    }
+
+    private fun handleUnreadableSlide(
+        index: Int,
+        slide: Slide,
+        error: Throwable,
+        runGeneration: Int,
+    ) {
         if (!isCurrent(runGeneration) || slides.getOrNull(index) != slide) return
+        val status = error.safeSmbStatus()?.let { ", $it" }.orEmpty()
+        Log.w(LOG_TAG, "Skipping unreadable photo (${error.javaClass.simpleName}$status)")
+        if (prepared?.slide == slide) clearPreparedPhoto()
         slides.removeAt(index)
         if (slides.isEmpty()) {
             scheduler.stop()
@@ -128,8 +222,18 @@ class SlideshowPlayer(
             return
         }
 
-        currentIndex = if (index < slides.size) index else 0
-        loadSlide(currentIndex, runGeneration)
+        if (index < currentIndex) currentIndex--
+        if (currentSlide == null) {
+            currentIndex = index.coerceAtMost(slides.lastIndex)
+            loadSlide(currentIndex, runGeneration)
+        } else {
+            preloadNextSlide(runGeneration)
+        }
+    }
+
+    private fun clearPreparedPhoto() {
+        prepared?.photo?.bitmap?.recycle()
+        prepared = null
     }
 
     private fun isCurrent(runGeneration: Int): Boolean = active && generation == runGeneration

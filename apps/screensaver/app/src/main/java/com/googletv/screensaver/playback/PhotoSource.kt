@@ -119,11 +119,18 @@ internal fun decodeSampledBitmap(
     targetHeight: Int,
     fallbackCacheDirectory: File? = null,
     exifOrientation: Int = ExifInterface.ORIENTATION_NORMAL,
+    useNativeHeif: Boolean = false,
 ): Bitmap {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     open().use { BitmapFactory.decodeStream(it, null, bounds) }
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-        return decodeWithImageDecoder(open, targetWidth, targetHeight, fallbackCacheDirectory)
+        return decodeAfterPlatformFailure(
+            open, targetWidth, targetHeight, fallbackCacheDirectory, useNativeHeif,
+        )
+    }
+
+    if (useNativeHeif && bounds.outWidth.toLong() * bounds.outHeight >= LARGE_HEIF_PIXEL_THRESHOLD) {
+        return decodeWithNativeHeif(open, targetWidth, targetHeight, fallbackCacheDirectory)
     }
 
     var sampleSize = 1
@@ -134,10 +141,53 @@ internal fun decodeSampledBitmap(
     }
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
     val decoded = open().use { input -> BitmapFactory.decodeStream(input, null, options) }
-        ?: return decodeWithImageDecoder(open, targetWidth, targetHeight, fallbackCacheDirectory)
+        ?: return decodeAfterPlatformFailure(
+            open, targetWidth, targetHeight, fallbackCacheDirectory, useNativeHeif,
+        )
     // BitmapFactory leaves EXIF orientation unapplied. ImageDecoder's platform path already
     // applies it, so only transform the BitmapFactory result here.
     return applyExifOrientation(decoded, exifOrientation)
+}
+
+private fun decodeAfterPlatformFailure(
+    open: () -> InputStream,
+    targetWidth: Int,
+    targetHeight: Int,
+    cacheDirectory: File?,
+    useNativeHeif: Boolean,
+): Bitmap {
+    var platformError: Exception? = null
+    try {
+        return decodeWithImageDecoder(open, targetWidth, targetHeight, cacheDirectory)
+    } catch (error: Exception) {
+        platformError = error
+    }
+
+    if (!useNativeHeif) throw platformError
+        ?: IllegalStateException("Platform photo decoding failed.")
+
+    return try {
+        decodeWithNativeHeif(open, targetWidth, targetHeight, cacheDirectory)
+    } catch (nativeError: Exception) {
+        platformError?.let(nativeError::addSuppressed)
+        throw nativeError
+    }
+}
+
+private fun decodeWithNativeHeif(
+    open: () -> InputStream,
+    targetWidth: Int,
+    targetHeight: Int,
+    cacheDirectory: File?,
+): Bitmap {
+    requireNotNull(cacheDirectory) { "Native HEIF decoding requires a private cache directory." }
+    val tempFile = File.createTempFile("heif-decode-", ".heic", cacheDirectory)
+    try {
+        open().use { input -> tempFile.outputStream().use(input::copyTo) }
+        return NativeHeifDecoder.decode(tempFile, targetWidth, targetHeight)
+    } finally {
+        tempFile.delete()
+    }
 }
 
 private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
@@ -212,3 +262,5 @@ private fun decodeWithImageDecoder(
         tempFile.delete()
     }
 }
+
+private const val LARGE_HEIF_PIXEL_THRESHOLD = 24_000_000L

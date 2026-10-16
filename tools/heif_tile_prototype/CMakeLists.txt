@@ -64,13 +64,13 @@ if(ANDROID)
     # public header while compiling its decoder backend.
     target_include_directories(heif PRIVATE "${libde265_BINARY_DIR}")
 
-    add_library(heif_tile_probe SHARED heif_tile_probe.cpp)
-    target_include_directories(heif_tile_probe PRIVATE
+    add_library(heif_decoder SHARED heif_tile_probe.cpp)
+    target_include_directories(heif_decoder PRIVATE
         "${libheif_SOURCE_DIR}/libheif/api"
         "${libheif_BINARY_DIR}"
     )
-    target_link_libraries(heif_tile_probe PRIVATE heif log)
-    target_compile_features(heif_tile_probe PRIVATE cxx_std_17)
+    target_link_libraries(heif_decoder PRIVATE heif log jnigraphics)
+    target_compile_features(heif_decoder PRIVATE cxx_std_17)
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(HEIF REQUIRED IMPORTED_TARGET libheif)

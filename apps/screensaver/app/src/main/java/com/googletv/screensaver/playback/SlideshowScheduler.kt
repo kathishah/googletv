@@ -10,12 +10,16 @@ class SlideshowScheduler(
     private val handler: Handler = Handler(Looper.getMainLooper()),
 ) {
     private var running = false
+    private var scheduleGeneration = 0
 
     private val ticker = object : Runnable {
         override fun run() {
             if (!running) return
+            val runGeneration = scheduleGeneration
             onTick()
-            handler.postDelayed(this, intervalMillis())
+            if (running && runGeneration == scheduleGeneration) {
+                handler.postDelayed(this, intervalMillis())
+            }
         }
     }
 
@@ -27,6 +31,15 @@ class SlideshowScheduler(
 
     fun stop() {
         running = false
+        scheduleGeneration++
         handler.removeCallbacks(ticker)
+    }
+
+    /** Restart the dwell interval from the moment a newly decoded slide is displayed. */
+    fun resetInterval() {
+        if (!running) return
+        scheduleGeneration++
+        handler.removeCallbacks(ticker)
+        handler.postDelayed(ticker, intervalMillis())
     }
 }

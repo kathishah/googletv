@@ -97,6 +97,8 @@ class SmbGuestPhotoSource(
             targetHeight = targetHeight,
             fallbackCacheDirectory = fallbackCacheDirectory,
             exifOrientation = metadata.orientation,
+            useNativeHeif = slide.id.endsWith(".heic", ignoreCase = true) ||
+                slide.id.endsWith(".heif", ignoreCase = true),
         )
         LoadedPhoto(bitmap, metadata.label)
     }
