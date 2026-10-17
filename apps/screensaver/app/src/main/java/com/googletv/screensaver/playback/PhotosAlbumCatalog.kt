@@ -15,6 +15,7 @@ import java.util.UUID
 
 /** Builds and validates the TV-private metadata catalog from a staged Photos database. */
 internal object PhotosAlbumCatalog {
+    // Bump when the query or path mapping changes, so a saved catalog is never kept for a newer build.
     private const val VERSION = 1
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
     private val supportedExtensions = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")
@@ -41,16 +42,22 @@ internal object PhotosAlbumCatalog {
             require(item.optInt("photoCount", -1) == paths.size)
             AlbumEntry(id, title, item.optString("yearMonth").takeUnless { it.isBlank() || it == "null" }, paths)
         }
-        AlbumIndex(albums, createdAt)
+        AlbumIndex(albums, createdAt, root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 })
     }.getOrNull()
 
-    fun build(databaseFile: File, progress: (String) -> Unit): AlbumIndex {
+    fun build(databaseFile: File, timings: PhaseTimings, progress: (String) -> Unit): AlbumIndex {
         progress("Reading regular albums and memberships")
-        val database = SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        val database = timings.time("sqlite_open") {
+            SQLiteDatabase.openDatabase(databaseFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        }
         val groups = linkedMapOf<String, MutableAlbum>()
         try {
-            database.execSQL("PRAGMA query_only=ON")
-            database.rawQuery(
+            timings.time("sqlite_open") { database.execSQL("PRAGMA query_only=ON") }
+            // The first row pays for building SQLite's WAL index and planning the joins.
+            var rowCount = 0L
+            // Android prepares the statement here; that is the first read, so it also pays for
+            // SQLite building its WAL index.
+            timings.time("sqlite_prepare") { database.rawQuery(
                 """SELECT a.ZUUID, a.ZTITLE, a.ZSTARTDATE, a.ZENDDATE,
                           x.Z_3ASSETS, s.ZDIRECTORY, s.ZFILENAME, s.ZKIND
                    FROM ZGENERICALBUM a
@@ -58,7 +65,7 @@ internal object PhotosAlbumCatalog {
                    LEFT JOIN ZASSET s ON s.Z_PK=x.Z_3ASSETS
                    WHERE a.Z_ENT=34 AND a.ZKIND=2 AND a.ZTRASHEDSTATE=0""".trimIndent(),
                 null,
-            ).use { cursor ->
+            ) }.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow("ZUUID")
                 val titleColumn = cursor.getColumnIndexOrThrow("ZTITLE")
                 val startColumn = cursor.getColumnIndexOrThrow("ZSTARTDATE")
@@ -67,30 +74,39 @@ internal object PhotosAlbumCatalog {
                 val directoryColumn = cursor.getColumnIndexOrThrow("ZDIRECTORY")
                 val filenameColumn = cursor.getColumnIndexOrThrow("ZFILENAME")
                 val kindColumn = cursor.getColumnIndexOrThrow("ZKIND")
-                while (cursor.moveToNext()) {
-                    if (cursor.isNull(idColumn)) continue
+                fun consumeRow() {
+                    rowCount += 1
+                    if (cursor.isNull(idColumn)) return
                     val id = cursor.getString(idColumn)
                     val start = if (cursor.isNull(startColumn)) null else cursor.getDouble(startColumn)
                     val end = if (cursor.isNull(endColumn)) null else cursor.getDouble(endColumn)
                     val album = groups.getOrPut(id) {
                         MutableAlbum(id, cursor.getString(titleColumn)?.takeIf { it.isNotBlank() } ?: "Untitled album", start, end)
                     }
-                    if (cursor.isNull(assetColumn) || cursor.isNull(directoryColumn) || cursor.isNull(filenameColumn)) continue
+                    if (cursor.isNull(assetColumn) || cursor.isNull(directoryColumn) || cursor.isNull(filenameColumn)) return
                     val kind = if (cursor.isNull(kindColumn)) -1 else cursor.getInt(kindColumn)
-                    if (kind !in setOf(0, 1)) continue
-                    val relative = safeRelativePath(cursor.getString(directoryColumn), cursor.getString(filenameColumn)) ?: continue
+                    if (kind !in setOf(0, 1)) return
+                    val relative = safeRelativePath(cursor.getString(directoryColumn), cursor.getString(filenameColumn)) ?: return
                     album.paths.add(relative)
                 }
+                var hasRow = timings.time("sqlite_first_row") { cursor.moveToNext() }
+                timings.time("sqlite_rows") {
+                    while (hasRow) {
+                        consumeRow()
+                        hasRow = cursor.moveToNext()
+                    }
+                }
+                timings.note("rows", rowCount)
             }
         } catch (error: Exception) {
             throw AlbumIndexException("The Photos database schema could not be read. Check that the Mac Photos library is available and try Refresh.")
         } finally {
-            database.close()
+            timings.time("sqlite_close") { database.close() }
         }
 
         progress("Validating album references under originals")
         val now = System.currentTimeMillis()
-        val albums = groups.values.map { album ->
+        val albums = timings.time("album_mapping") { groups.values.map { album ->
             val date = listOfNotNull(album.start, album.end).maxOrNull()
             val yearMonth = date?.let { seconds ->
                 runCatching {
@@ -98,7 +114,9 @@ internal object PhotosAlbumCatalog {
                 }.getOrNull()
             }
             AlbumEntry(album.id, album.title, yearMonth, album.paths.toList())
-        }
+        } }
+        timings.note("albums", albums.size.toLong())
+        timings.note("paths", albums.sumOf { it.paths.size }.toLong())
         return AlbumIndex(albums, now)
     }
 
@@ -108,6 +126,7 @@ internal object PhotosAlbumCatalog {
             .put("version", VERSION)
             .put("pathRoot", PATH_ROOT)
             .put("createdAt", index.createdAtMillis)
+        index.sourceModifiedMillis?.let { root.put("sourceModifiedAt", it) }
         val albums = JSONArray()
         index.albums.forEach { album ->
             albums.put(JSONObject()

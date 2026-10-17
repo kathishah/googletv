@@ -34,7 +34,12 @@ data class SmbSourceConfig(
 )
 
 data class AlbumEntry(val id: String, val title: String, val yearMonth: String?, val paths: List<String>)
-data class AlbumIndex(val albums: List<AlbumEntry>, val createdAtMillis: Long = System.currentTimeMillis())
+data class AlbumIndex(
+    val albums: List<AlbumEntry>,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    /** Newest modification time of the Photos database files the catalog was built from. */
+    val sourceModifiedMillis: Long? = null,
+)
 data class AlbumCatalogProgress(val message: String, val bytesCopied: Long? = null, val totalBytes: Long? = null)
 class AlbumIndexException(message: String) : IllegalStateException(message)
 
@@ -48,6 +53,7 @@ class SmbGuestPhotoSource(
     private val placeNameLookup: ((Double, Double) -> String?)? = null,
     private val fallbackCacheDirectory: java.io.File,
     private val catalogCacheDirectory: java.io.File = fallbackCacheDirectory,
+    private val databaseStageDirectory: java.io.File = java.io.File(catalogCacheDirectory, "photos-db-stage"),
     private val selectedAlbumIds: Set<String> = emptySet(),
     private val selectedAlbumMode: Boolean = selectedAlbumIds.isNotEmpty(),
 ) : PhotoSource {
@@ -131,96 +137,114 @@ class SmbGuestPhotoSource(
     ): AlbumIndex {
         if (!refresh) {
             progress(AlbumCatalogProgress("Reading the saved catalog from this TV"))
-            PhotosAlbumCatalog.read(cacheFile)?.let { return it }
+            val readStartedAt = SystemClock.elapsedRealtime()
+            PhotosAlbumCatalog.read(cacheFile)?.let { index ->
+                Log.i(
+                    LOG_TAG,
+                    "Album catalog read from this TV: ${index.albums.size} albums, " +
+                        "${index.albums.sumOf { it.paths.size }} paths, ${cacheFile.length()} bytes in " +
+                        "${SystemClock.elapsedRealtime() - readStartedAt} ms",
+                )
+                return index
+            }
         }
         val segments = rootPath.split('\\')
         if (segments.lastOrNull()?.equals("originals", ignoreCase = true) != true || segments.size < 2) {
             throw AlbumIndexException("Album selection requires the Photos Library originals folder as the SMB library path. Update SMB settings and try again.")
         }
         val libraryPath = segments.dropLast(1).joinToString("\\")
-        val databaseRelativePath = "$libraryPath\\database\\Photos.sqlite"
-        val stageDirectory = java.io.File(fallbackCacheDirectory, "album-db-${java.util.UUID.randomUUID()}")
-        if (!stageDirectory.mkdirs()) throw AlbumIndexException("The TV could not prepare temporary storage for the Photos database.")
-        val stagedDatabase = java.io.File(stageDirectory, "Photos.sqlite")
+        val stage = DatabaseStage(databaseStageDirectory)
+        val timings = PhaseTimings()
         try {
-            progress(AlbumCatalogProgress("Connecting to the Photos SMB share"))
-            withDiskShare { diskShare ->
-                val databaseBytes = remoteFileSize(diskShare, databaseRelativePath, optional = false)
-                    ?: throw AlbumIndexException("The Photos database is missing or unreadable on the share. Check the library path and read-only access.")
-                val walPath = "$databaseRelativePath-wal"
-                val walBytes = remoteFileSize(diskShare, walPath, optional = true) ?: 0L
-                val totalBytes = databaseBytes + walBytes
-                progress(AlbumCatalogProgress("Copying the SQLite snapshot read-only", 0L, totalBytes))
-                var copiedBase = 0L
-                copyRemoteFile(diskShare, databaseRelativePath, stagedDatabase, optional = false, totalBytes = totalBytes) { copied ->
-                    progress(AlbumCatalogProgress("Copying the SQLite snapshot read-only", copied, totalBytes))
-                }
-                copiedBase += databaseBytes
-                copyRemoteFile(
-                    diskShare, walPath, java.io.File(stageDirectory, "Photos.sqlite-wal"), optional = true, totalBytes = totalBytes,
-                ) { copied ->
-                    progress(AlbumCatalogProgress("Copying the SQLite snapshot read-only", copiedBase + copied, totalBytes))
-                }
-            }
-            val index = PhotosAlbumCatalog.build(stagedDatabase) { message -> progress(AlbumCatalogProgress(message)) }
-            progress(AlbumCatalogProgress("Saving the catalog on this TV"))
-            PhotosAlbumCatalog.write(cacheFile, index)
-            return index
-        } catch (error: AlbumIndexException) {
-            throw error
-        } catch (error: Throwable) {
-            throw AlbumIndexException("Could not build the album catalog from the Photos database. Check that the library share is available, then try Refresh.")
-        } finally {
-            stageDirectory.deleteRecursively()
-        }
-    }
-
-    private fun remoteFileSize(diskShare: DiskShare, remotePath: String, optional: Boolean): Long? = try {
-        diskShare.getFileInformation(remotePath, FileStandardInformation::class.java).endOfFile
-    } catch (error: Throwable) {
-        if (optional && error.smbFailureKind() == SmbFailureKind.PER_FILE) null
-        else if (error.smbFailureKind() == SmbFailureKind.PER_FILE) {
-            throw AlbumIndexException("The Photos database is missing or unreadable on the share. Check the library path and read-only access.")
-        } else throw error
-    }
-
-    private fun copyRemoteFile(
-        diskShare: DiskShare,
-        remotePath: String,
-        destination: java.io.File,
-        optional: Boolean,
-        totalBytes: Long,
-        onProgress: (Long) -> Unit,
-    ) {
-        val input = try {
-            openReadOnlyFile(diskShare, remotePath)
-        } catch (error: Throwable) {
-            if (optional && error.smbFailureKind() == SmbFailureKind.PER_FILE) return
-            if (error.smbFailureKind() == SmbFailureKind.PER_FILE) {
-                throw AlbumIndexException("The Photos database is missing or unreadable on the share. Check the library path and read-only access.")
-            }
-            throw error
-        }
-        input.use { source ->
-            destination.outputStream().use { target ->
-                val buffer = ByteArray(1024 * 1024)
-                var copied = 0L
-                var lastReportAt = SystemClock.elapsedRealtime()
-                while (true) {
-                    val read = source.read(buffer)
-                    if (read < 0) break
-                    target.write(buffer, 0, read)
-                    copied += read
-                    val now = SystemClock.elapsedRealtime()
-                    if (copied == read.toLong() || copied >= totalBytes || now - lastReportAt >= 250L) {
-                        onProgress(copied)
-                        lastReportAt = now
+            return stage.withExclusiveAccess {
+                progress(AlbumCatalogProgress("Connecting to the Photos SMB share"))
+                val synced = timings.time("smb_session") { withDiskShare { diskShare ->
+                    stage.sync(SmbDatabaseFiles(diskShare, libraryPath), timings) { done, total ->
+                        progress(
+                            if (total > 0L) AlbumCatalogProgress("Copying the SQLite snapshot read-only", done, total)
+                            else AlbumCatalogProgress("Checking the Photos database snapshot"),
+                        )
+                    }
+                } }
+                val sourceModified = maxOf(synced.databaseModifiedMillis, synced.walModifiedMillis ?: 0L)
+                if (synced.unchanged) {
+                    val current = timings.time("catalog_read") { PhotosAlbumCatalog.read(cacheFile) }
+                        ?.takeIf { it.sourceModifiedMillis == sourceModified }
+                    if (current != null) {
+                        progress(AlbumCatalogProgress("The Photos library has not changed since the saved catalog"))
+                        Log.i(LOG_TAG, "Album catalog refresh: library unchanged, kept the saved catalog | ${timings.summary()}")
+                        return@withExclusiveAccess current
                     }
                 }
-                target.flush()
-                onProgress(copied)
+                timings.time("prepare_query") { stage.prepareForQuery() }
+                val built = try {
+                    PhotosAlbumCatalog.build(synced.databaseFile, timings) { message -> progress(AlbumCatalogProgress(message)) }
+                } catch (error: Throwable) {
+                    // The staged copy may be damaged; make the next refresh start from a clean copy.
+                    stage.clear()
+                    throw error
+                }
+                val index = built.copy(sourceModifiedMillis = sourceModified)
+                progress(AlbumCatalogProgress("Saving the catalog on this TV"))
+                timings.time("catalog_write") { PhotosAlbumCatalog.write(cacheFile, index) }
+                timings.addBytes("catalog_write", cacheFile.length())
+                Log.i(
+                    LOG_TAG,
+                    "Album catalog refresh: database ${if (synced.reusedDatabase) "reused" else "copied"}, " +
+                        "WAL ${if (synced.walResumedFrom > 0L) "resumed at ${synced.walResumedFrom}" else "fetched from start"}, " +
+                        "${synced.databaseBytesFetched + synced.walBytesFetched} bytes fetched, " +
+                        "${synced.localWalBytes} WAL bytes kept | ${timings.summary()}",
+                )
+                index
             }
+        } catch (error: AlbumIndexException) {
+            Log.w(LOG_TAG, "Album catalog refresh failed after: ${timings.summary()}")
+            throw error
+        } catch (error: Throwable) {
+            Log.w(LOG_TAG, "Album catalog refresh failed (${error.safeCauseChain()}) after: ${timings.summary()}")
+            throw AlbumIndexException("Could not build the album catalog from the Photos database. Check that the library share is available, then try Refresh.")
         }
+    }
+
+    /** The Photos database files on the share, read through one open [DiskShare]. */
+    private inner class SmbDatabaseFiles(
+        private val diskShare: DiskShare,
+        private val libraryPath: String,
+    ) : RemoteDatabaseFiles {
+        private fun pathOf(file: DatabaseFile) = "$libraryPath\\database\\${file.localName}"
+
+        // A directory listing returns size and modification time together and is the same kind of
+        // call the photo listing already makes as Guest; per-file attribute queries were denied.
+        override fun stat(file: DatabaseFile): RemoteFileInfo? = try {
+            diskShare.list("$libraryPath\\database", file.localName)
+                .firstOrNull { it.fileName.equals(file.localName, ignoreCase = true) }
+                ?.let { RemoteFileInfo(it.endOfFile, it.lastWriteTime.toEpochMillis()) }
+        } catch (error: Throwable) {
+            val kind = error.smbFailureKind()
+            Log.w(LOG_TAG, "Listing of ${file.name} failed as $kind (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
+            if (kind == SmbFailureKind.PER_FILE) null else throw error
+        }
+
+        override fun openStream(file: DatabaseFile, offset: Long): InputStream =
+            if (offset == 0L) openReadOnlyFile(diskShare, pathOf(file))
+            else RangedSmbInputStream(openReadOnlyHandle(diskShare, pathOf(file)), offset)
+    }
+
+    /** Sequential reads from [startOffset] using one synchronous request per call; for small ranges. */
+    private class RangedSmbInputStream(private val file: File, private var position: Long) : InputStream() {
+        override fun read(): Int {
+            val single = ByteArray(1)
+            return if (read(single, 0, 1) < 0) -1 else single[0].toInt() and 0xff
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (length == 0) return 0
+            val count = file.read(buffer, position, offset, length)
+            if (count > 0) position += count
+            return count
+        }
+
+        override fun close() = file.close()
     }
 
     private fun loadSelectedAlbumSlides(): List<Slide> {
@@ -299,15 +323,17 @@ class SmbGuestPhotoSource(
         return ByteArrayInputStream(bytes, 0, count)
     }
 
+    private fun openReadOnlyHandle(diskShare: DiskShare, path: String): File = diskShare.openFile(
+        path,
+        EnumSet.of(AccessMask.GENERIC_READ),
+        EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+        SMB2ShareAccess.ALL,
+        SMB2CreateDisposition.FILE_OPEN,
+        EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
+    )
+
     private fun openReadOnlyFile(diskShare: DiskShare, path: String): InputStream {
-        val file: File = diskShare.openFile(
-            path,
-            EnumSet.of(AccessMask.GENERIC_READ),
-            EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
-            SMB2ShareAccess.ALL,
-            SMB2CreateDisposition.FILE_OPEN,
-            EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
-        )
+        val file = openReadOnlyHandle(diskShare, path)
         return object : FilterInputStream(file.inputStream) {
             override fun close() {
                 try {

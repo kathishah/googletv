@@ -397,7 +397,10 @@ class MainActivity : Activity() {
         setContentView(loading)
         albumExecutor.execute {
             val result = runCatching {
-                val source = SmbGuestPhotoSource(config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir)
+                val source = SmbGuestPhotoSource(
+                    config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
+                    catalogCacheDirectory = filesDir,
+                )
                 try {
                     source.loadAlbumIndex(
                         java.io.File(filesDir, "photos-album-catalog-v1.json"),
@@ -417,7 +420,7 @@ class MainActivity : Activity() {
                                 progressText.text = "${update.message}…"
                             }
                         }
-                    } }.albums
+                    } }
                 } finally {
                     source.close()
                 }
@@ -425,7 +428,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (isFinishing || !pickerOpen || token != catalogLoadToken) return@runOnUiThread
                 result.fold(
-                    { albums -> showAlbumPicker(albums) },
+                    { index -> showAlbumPicker(index.albums, index.sourceModifiedMillis) },
                     { err -> showAlbumPickerError(
                         if (err is com.googletv.screensaver.playback.AlbumIndexException) err.message ?: "Album catalog unavailable"
                         else "Couldn't build the album catalog. Check the Photos share and try again.",
@@ -460,7 +463,7 @@ class MainActivity : Activity() {
         retry.requestFocus()
     }
 
-    private fun showAlbumPicker(albums: List<AlbumEntry>) {
+    private fun showAlbumPicker(albums: List<AlbumEntry>, sourceModifiedMillis: Long? = null) {
         albumCoverSource = SmbGuestPhotoSource(draftSmbConfig, 480, 300, labelMode = labelMode, fallbackCacheDirectory = cacheDir)
         val staged = selectedAlbumIds.toMutableSet()
         var sortName = false
@@ -485,7 +488,10 @@ class MainActivity : Activity() {
         }
         val titleBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleBlock.addView(text("Choose albums", 30f, true))
-        titleBlock.addView(text("Select the albums you want to see in your slideshow.", 14f, false).apply {
+        val dataAge = sourceModifiedMillis?.let {
+            "  ·  Library data as of " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(it))
+        }.orEmpty()
+        titleBlock.addView(text("Select the albums you want to see in your slideshow.$dataAge", 14f, false).apply {
             setTextColor(Color.rgb(181, 193, 204))
             setPadding(0, dp(4), 0, 0)
         })
@@ -744,8 +750,10 @@ class MainActivity : Activity() {
         val config = draftSmbConfig
         val pickerToken = catalogLoadToken
         albumExecutor.execute {
+            val coverStartedAt = android.os.SystemClock.elapsedRealtime()
             val cacheFile = File(albumCoverCacheDirectory, "$cacheKey.jpg")
             var bitmap = if (cacheFile.isFile) BitmapFactory.decodeFile(cacheFile.absolutePath) else null
+            val coverFromCache = bitmap != null
             if (bitmap == null) {
                 cacheFile.delete()
                 bitmap = album.paths.take(4).firstNotNullOfOrNull { relativePath ->
@@ -760,6 +768,11 @@ class MainActivity : Activity() {
                 cacheFile.setLastModified(System.currentTimeMillis())
             }
             val loadedBitmap = bitmap
+            android.util.Log.i(
+                "AlbumPicker",
+                "Cover ${if (loadedBitmap == null) "unavailable" else if (coverFromCache) "loaded from cache" else "loaded from share"} in " +
+                    "${android.os.SystemClock.elapsedRealtime() - coverStartedAt} ms",
+            )
             if (loadedBitmap != null) runOnUiThread {
                 if (pickerOpen && pickerToken == catalogLoadToken && !isFinishing) {
                     albumCoverCache[cacheKey] = loadedBitmap

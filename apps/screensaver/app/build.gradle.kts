@@ -61,4 +61,6 @@ android {
 
 dependencies {
     implementation("com.hierynomus:smbj:0.15.0")
+
+    testImplementation("junit:junit:4.13.2")
 }
