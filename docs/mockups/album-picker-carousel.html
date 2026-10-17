@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose albums · horizontal carousel mock</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101821;
+      --panel: #17232f;
+      --panel-hi: #223343;
+      --line: #405265;
+      --blue: #347db5;
+      --blue-bright: #80c6ff;
+      --white: #f5f8fb;
+      --muted: #b5c1cc;
+      --soft: #8291a0;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0; min-height: 100vh; padding: 24px; display: grid; place-items: center;
+      background: #0b1118; color: var(--white);
+      font: 16px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .page { width: min(1280px, 100%); }
+    .page-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 13px; }
+    .eyebrow { color: var(--blue-bright); text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 750; }
+    h1 { margin: 4px 0 0; font-size: 23px; font-weight: 650; }
+    .review-note { max-width: 500px; margin: 0; color: var(--muted); text-align: right; font-size: 12px; }
+    .tv {
+      width: 100%; aspect-ratio: 16 / 9; overflow: hidden; position: relative;
+      border: 1px solid #455668; border-radius: 13px; padding: 34px 50px 28px;
+      background: radial-gradient(ellipse at 72% 18%, #263a4b 0%, #151f29 46%, #101821 80%);
+      box-shadow: 0 20px 70px #0009, inset 0 0 0 7px #05090d;
+    }
+    .screen { height: 100%; display: flex; flex-direction: column; }
+    .topline { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; letter-spacing: .07em; }
+    .brand { display: flex; align-items: center; gap: 9px; color: white; font-weight: 650; letter-spacing: 0; }
+    .brand-mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; background: #347db5; font-size: 12px; }
+    .brand-mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; background: var(--blue); font-size: 12px; }
+    .heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-top: 23px; }
+    h2 { margin: 0; font-size: 31px; line-height: 1.1; font-weight: 650; letter-spacing: -.025em; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .cache-pill { flex: 0 0 auto; color: #c3e8d1; border: 1px solid #397553; background: #163626; border-radius: 999px; padding: 7px 11px; font-size: 11px; }
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-top: 22px; }
+    .toolbar-label { margin-right: auto; color: var(--muted); font-size: 12px; }
+    .control {
+      min-height: 38px; border: 1px solid #506276; border-radius: 7px; background: #202d3a;
+      color: #edf5fb; padding: 0 13px; font: inherit; font-size: 12px; cursor: pointer;
+    }
+    .control.muted { color: #c2cfda; background: #192631; }
+    button:focus-visible, .album:focus-visible { outline: 4px solid #fff; outline-offset: 3px; box-shadow: 0 0 0 8px #367dbbaa; z-index: 2; }
+    .carousel-wrap { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; margin: 3px -1px 0; }
+    .albums {
+      width: 100%; display: flex; align-items: stretch; gap: 16px; overflow-x: auto; overflow-y: visible;
+      padding: 13px 12px 16px; scrollbar-width: none; scroll-behavior: smooth; overscroll-behavior-x: contain;
+    }
+    .albums::-webkit-scrollbar { display: none; }
+    .album {
+      position: relative; flex: 0 0 210px; height: clamp(168px, 24vw, 236px); overflow: hidden;
+      border: 1px solid #708091; border-radius: 12px; background: #1b2833; color: white;
+      padding: 0; text-align: left; cursor: pointer; transition: transform .14s ease, border-color .14s ease;
+    }
+    .album:hover { transform: scale(1.02); }
+    .album.focus-demo { outline: 4px solid #fff; outline-offset: 3px; box-shadow: 0 0 0 9px #367dbbaa; z-index: 2; }
+    .album[aria-pressed="true"] { border: 2px solid #79bdf1; }
+    .cover { position: absolute; inset: 0; background: linear-gradient(135deg, #52697b, #c39262 58%, #d5c18a); }
+    .cover::before { content: ""; position: absolute; inset: 0; opacity: .75; background: radial-gradient(ellipse at 23% 20%, #fff2d0 0 5%, transparent 5.5%), linear-gradient(145deg, transparent 42%, #284843 43% 58%, transparent 59%), linear-gradient(18deg, #203a42 0 31%, transparent 32%); }
+    .autumn { background: linear-gradient(135deg, #4e5140, #d18a57 56%, #dfc28c); }
+    .city { background: linear-gradient(135deg, #242e48, #d37c61 58%, #e7bf82); }
+    .winter { background: linear-gradient(135deg, #5e7b8e, #d5d9d1 55%, #8da7ad); }
+    .coast { background: linear-gradient(135deg, #267580, #78c1bd 48%, #e2b57d); }
+    .spring { background: linear-gradient(135deg, #577765, #b9b67f 53%, #d18c72); }
+    .cabin { background: linear-gradient(135deg, #263d47, #7294a0 48%, #ad8b65); }
+    .birthday { background: linear-gradient(135deg, #5f495e, #db9b70 58%, #efc882); }
+    .favorites { background: linear-gradient(135deg, #354b71, #8b83b5 55%, #d7a080); }
+    .shade { position: absolute; inset: 34% 0 0; background: linear-gradient(180deg, transparent 0%, #08111b70 28%, #08111bf2 100%); }
+    .check { position: absolute; top: 11px; right: 11px; width: 27px; height: 27px; display: grid; place-items: center; border: 2px solid white; border-radius: 7px; background: #12202bbf; color: white; font-size: 17px; font-weight: 800; }
+    .album[aria-pressed="true"] .check { border-color: #b5dcff; background: #286da4; }
+    .album-copy { position: absolute; right: 10px; bottom: 11px; left: 11px; text-shadow: 0 1px 4px #000d; }
+    .album-title { display: block; overflow: hidden; font-size: 14px; line-height: 1.2; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+    .album-photos { display: block; margin-top: 4px; color: #e1eaf1; font-size: 11px; }
+    .carousel-arrow { position: absolute; top: 50%; z-index: 3; width: 37px; height: 52px; transform: translateY(-50%); border: 1px solid #8395a6; border-radius: 9px; background: #0b141dd9; color: white; font-size: 23px; cursor: pointer; }
+    .carousel-arrow.left { left: -10px; }
+    .carousel-arrow.right { right: -10px; }
+    .bottom-rail { min-height: 68px; display: flex; align-items: center; gap: 20px; border-top: 1px solid #435465; padding-top: 12px; }
+    .totals { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
+    .total-number { color: white; font-size: 24px; font-weight: 720; letter-spacing: -.02em; }
+    .total-label { color: #e1eaf2; font-size: 13px; }
+    .total-separator { margin: 0 6px; color: #64778a; }
+    .save-note { color: var(--muted); font-size: 11px; }
+    .done { min-width: 122px; min-height: 42px; border: 1px solid #67a9de; border-radius: 8px; background: #286da4; color: white; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .toast { position: absolute; left: 50%; bottom: 102px; transform: translate(-50%, 8px); opacity: 0; border: 1px solid #52708b; border-radius: 999px; padding: 8px 14px; background: #111b25ed; color: #eaf4fb; font-size: 12px; transition: .2s ease; pointer-events: none; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .caption { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+    .caption strong { color: white; }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .page-head { align-items: start; flex-direction: column; gap: 7px; }
+      .review-note { text-align: left; }
+      .tv { padding: 24px; }
+      .album { flex-basis: 170px; }
+      .toolbar { gap: 6px; }
+      .control { padding: 0 8px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="page-head">
+      <div><div class="eyebrow">Photo Screensaver · design review</div><h1>Choose albums · carousel concept</h1></div>
+      <p class="review-note">Selection is saved as it changes. Press Back on the remote or choose Done to return.</p>
+    </header>
+    <section class="tv" aria-label="Television screen mockup">
+      <main class="screen">
+        <div class="topline"><span class="brand"><span class="brand-mark">P</span>Photo Screensaver</span><span>PHOTO SOURCE · SMB SHARE</span></div>
+        <div class="heading"><div><h2>Choose albums</h2><p class="subtitle">Select the albums you want to see in your slideshow.</p></div><span class="cache-pill">✓ Album covers ready from TV cache</span></div>
+        <div class="toolbar" aria-label="Album controls">
+          <span class="toolbar-label">Albums</span>
+          <button class="control muted" id="refresh">Refresh</button>
+          <button class="control" id="sort">Sort: Newest ▾</button>
+          <button class="control" id="selectAll">Select all</button>
+          <button class="control" id="clearAll">Clear all</button>
+        </div>
+        <div class="carousel-wrap">
+          <button class="carousel-arrow left" id="prev" aria-label="Scroll albums left">‹</button>
+          <div class="albums" id="albums" aria-label="Albums">
+            <button class="album focus-demo" data-album="autumn" data-title="2025-09 Autumn by the lake" data-date="202509" data-count="318" data-start="0" aria-pressed="true" aria-label="2025-09 Autumn by the lake, 318 photos, selected">
+              <span class="cover autumn"></span><span class="shade"></span><span class="check">✓</span><span class="album-copy"><span class="album-title">2025-09 Autumn by the lake</span><span class="album-photos">318 photos</span></span>
+            </button>
+            <button class="album" data-album="city" data-title="2025-06 City nights" data-date="202506" data-count="128" data-start="290" aria-pressed="true" aria-label="2025-06 City nights, 128 photos, selected">
+              <span class="cover city"></span><span class="shade"></span><span class="check">✓</span><span class="album-copy"><span class="album-title">2025-06 City nights</span><span class="album-photos">128 photos</span></span>
+            </button>
+            <button class="album" data-album="hike" data-title="2025-02 Winter hike" data-date="202502" data-count="82" data-start="500" aria-pressed="false" aria-label="2025-02 Winter hike, 82 photos">
+              <span class="cover winter"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2025-02 Winter hike</span><span class="album-photos">82 photos</span></span>
+            </button>
+            <button class="album" data-album="holidays" data-title="2024-12 Winter holidays" data-date="202412" data-count="96" data-start="600" aria-pressed="false" aria-label="2024-12 Winter holidays, 96 photos">
+              <span class="cover winter"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2024-12 Winter holidays</span><span class="album-photos">96 photos</span></span>
+            </button>
+            <button class="album" data-album="garden" data-title="2024-09 Garden" data-date="202409" data-count="146" data-start="700" aria-pressed="false" aria-label="2024-09 Garden, 146 photos">
+              <span class="cover spring"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2024-09 Garden</span><span class="album-photos">146 photos</span></span>
+            </button>
+            <button class="album" data-album="coast" data-title="2024-07 Coast trip" data-date="202407" data-count="524" data-start="0" data-ranges="0:100,500:424" aria-pressed="true" aria-label="2024-07 Coast trip, 524 photos, selected">
+              <span class="cover coast"></span><span class="shade"></span><span class="check">✓</span><span class="album-copy"><span class="album-title">2024-07 Coast trip</span><span class="album-photos">524 photos</span></span>
+            </button>
+            <button class="album" data-album="weekend" data-title="2024-01 City weekend" data-date="202401" data-count="63" data-start="1000" aria-pressed="false" aria-label="2024-01 City weekend, 63 photos">
+              <span class="cover city"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2024-01 City weekend</span><span class="album-photos">63 photos</span></span>
+            </button>
+            <button class="album" data-album="yosemite" data-title="2023-08 Yosemite" data-date="202308" data-count="207" data-start="1100" aria-pressed="false" aria-label="2023-08 Yosemite, 207 photos">
+              <span class="cover coast"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2023-08 Yosemite</span><span class="album-photos">207 photos</span></span>
+            </button>
+            <button class="album" data-album="roadtrip" data-title="2022-06 Road trip" data-date="202206" data-count="276" data-start="1400" aria-pressed="false" aria-label="2022-06 Road trip, 276 photos">
+              <span class="cover cabin"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2022-06 Road trip</span><span class="album-photos">276 photos</span></span>
+            </button>
+            <button class="album" data-album="birthday" data-title="2021-09 Birthday" data-date="202109" data-count="52" data-start="1700" aria-pressed="false" aria-label="2021-09 Birthday, 52 photos">
+              <span class="cover birthday"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2021-09 Birthday</span><span class="album-photos">52 photos</span></span>
+            </button>
+            <button class="album" data-album="spring" data-title="2021-05 Spring hikes" data-date="202105" data-count="116" data-start="1800" aria-pressed="false" aria-label="2021-05 Spring hikes, 116 photos">
+              <span class="cover spring"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">2021-05 Spring hikes</span><span class="album-photos">116 photos</span></span>
+            </button>
+            <button class="album" data-album="favorites" data-title="Favorites" data-date="" data-count="181" data-start="2000" aria-pressed="false" aria-label="Favorites, 181 photos">
+              <span class="cover favorites"></span><span class="shade"></span><span class="check"></span><span class="album-copy"><span class="album-title">Favorites</span><span class="album-photos">181 photos</span></span>
+            </button>
+          </div>
+          <button class="carousel-arrow right" id="next" aria-label="Scroll albums right">›</button>
+        </div>
+        <footer class="bottom-rail">
+          <div class="totals" aria-live="polite"><span class="total-number" id="albumTotal">3</span><span class="total-label">albums</span><span class="total-separator">·</span><span class="total-number" id="photoTotal">842</span><span class="total-label">pictures</span></div>
+          <span class="save-note">Saved automatically · Back also returns</span>
+          <button class="done" id="done">Done</button>
+        </footer>
+      </main>
+      <div class="toast" id="toast" role="status">Selection saved</div>
+    </section>
+    <p class="caption"><strong>Interaction:</strong> Select an album card to toggle it. Use the top controls to sort or select all/none. Every toggle saves immediately; Done or remote Back returns without an Apply step. Counts show the distinct usable pictures across selected albums.</p>
+  </main>
+  <script>
+    const cards = [...document.querySelectorAll('.album')];
+    const albums = document.getElementById('albums');
+    const albumTotal = document.getElementById('albumTotal');
+    const photoTotal = document.getElementById('photoTotal');
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function selectedCards() { return cards.filter(card => card.getAttribute('aria-pressed') === 'true'); }
+    function updateSummary() {
+      const selected = selectedCards();
+      const ids = new Set();
+      selected.forEach(card => {
+        const ranges = (card.dataset.ranges || `${card.dataset.start}:${card.dataset.count}`).split(',');
+        ranges.forEach(range => {
+          const [start, count] = range.split(':').map(Number);
+          for (let i = start; i < start + count; i += 1) ids.add(i);
+        });
+      });
+      albumTotal.textContent = String(selected.length);
+      photoTotal.textContent = ids.size.toLocaleString();
+    }
+    function persistSelection() {
+      const selection = selectedCards().map(card => card.dataset.album);
+      try { localStorage.setItem('album-picker-selection', JSON.stringify(selection)); } catch (_) {}
+      updateSummary();
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 800);
+    }
+    function setSelected(card, selected) {
+      card.setAttribute('aria-pressed', String(selected));
+      card.querySelector('.check').textContent = selected ? '✓' : '';
+    }
+    cards.forEach(card => card.addEventListener('click', () => {
+      setSelected(card, card.getAttribute('aria-pressed') !== 'true');
+      persistSelection();
+    }));
+    document.getElementById('selectAll').addEventListener('click', () => { cards.forEach(card => setSelected(card, true)); persistSelection(); });
+    document.getElementById('clearAll').addEventListener('click', () => { cards.forEach(card => setSelected(card, false)); persistSelection(); });
+    document.getElementById('prev').addEventListener('click', () => albums.scrollBy({ left: -460, behavior: 'smooth' }));
+    document.getElementById('next').addEventListener('click', () => albums.scrollBy({ left: 460, behavior: 'smooth' }));
+    document.getElementById('sort').addEventListener('click', event => {
+      const alpha = event.currentTarget.dataset.alpha !== 'true';
+      event.currentTarget.dataset.alpha = String(alpha);
+      event.currentTarget.textContent = alpha ? 'Sort: A–Z ▾' : 'Sort: Newest ▾';
+      [...cards].sort((a, b) => alpha
+        ? a.dataset.title.localeCompare(b.dataset.title)
+        : (Number(b.dataset.date || 0) - Number(a.dataset.date || 0)) || a.dataset.title.localeCompare(b.dataset.title))
+        .forEach(card => albums.appendChild(card));
+    });
+    document.getElementById('refresh').addEventListener('click', () => {
+      toast.textContent = 'Album list refreshed';
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.textContent = 'Selection saved'; toast.classList.remove('show'); }, 1000);
+    });
+    document.getElementById('done').addEventListener('click', () => {
+      toast.textContent = 'Selection saved · returning to settings';
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
+    });
+    try {
+      const saved = JSON.parse(localStorage.getItem('album-picker-selection') || 'null');
+      if (Array.isArray(saved)) cards.forEach(card => {
+        const isSelected = saved.includes(card.dataset.album);
+        card.setAttribute('aria-pressed', String(isSelected));
+        card.querySelector('.check').textContent = isSelected ? '✓' : '';
+      });
+    } catch (_) {}
+    updateSummary();
+  </script>
+</body>
+</html>

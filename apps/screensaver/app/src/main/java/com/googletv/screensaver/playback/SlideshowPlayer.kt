@@ -96,6 +96,11 @@ class SlideshowPlayer(
      * with backoff for as long as the dream runs; the error text appears only if it persists.
      */
     private fun handleListingFailure(error: Throwable, runGeneration: Int, attempt: Int) {
+        if (error is AlbumIndexException) {
+            exitFallback()
+            showError(error.message ?: "The selected album index is unavailable. Check the Mac index and saved selection.")
+            return
+        }
         val kind = error.smbFailureKind()
         Log.w(
             LOG_TAG,

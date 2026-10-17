@@ -19,6 +19,7 @@
       --line: #344454;
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       min-height: 100vh;
@@ -48,7 +49,7 @@
       box-shadow: 0 20px 70px #0009, inset 0 0 0 7px #05090d;
       padding: clamp(18px, 3.1vw, 42px) clamp(26px, 4.5vw, 64px);
     }
-    .screen { height: 100%; display: none; }
+    .screen { height: 100%; display: none; position: relative; }
     .screen.active { display: flex; flex-direction: column; }
     .topline { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: clamp(10px, 1.08vw, 13px); letter-spacing: .04em; }
     .brand { display: flex; align-items: center; gap: 10px; color: white; font-weight: 650; letter-spacing: 0; }
@@ -58,6 +59,27 @@
     .setting-list { margin-top: clamp(24px, 3.4vw, 40px); display: grid; gap: 10px; max-width: 800px; }
     .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 20px; min-height: 64px; border: 1px solid var(--line); border-radius: 10px; background: #17232fd9; }
     .setting-row.focus { border: 2px solid #e5f3ff; padding: 16px 19px; background: #1b3043; box-shadow: 0 0 0 3px #30689b66; }
+    .mode-row { width: 100%; appearance: none; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 18px; min-height: 58px; border: 1px solid var(--line); border-radius: 10px; background: #17232fd9; color: var(--white); text-align: left; font: inherit; cursor: pointer; }
+    .mode-row.selected { border: 2px solid #e5f3ff; padding: 12px 17px; background: #1b3043; box-shadow: 0 0 0 3px #30689b66; }
+    .mode-title { font-size: clamp(13px, 1.5vw, 18px); font-weight: 600; }
+    .mode-detail { display: block; color: var(--muted); font-size: clamp(10px, 1.1vw, 13px); margin-top: 3px; font-weight: 400; }
+    .radio { width: 21px; height: 21px; flex: 0 0 21px; border: 2px solid #8192a3; border-radius: 50%; display: grid; place-items: center; }
+    .mode-row.selected .radio { border-color: var(--blue-bright); }
+    .mode-row.selected .radio::after { content: ""; width: 11px; height: 11px; border-radius: 50%; background: var(--blue-bright); }
+    .compact-title { font-size: clamp(21px, 2.5vw, 30px); margin: 7px 0 9px; }
+    .settings-table { display: grid; gap: 6px; margin-top: 2px; }
+    .table-row { display: grid; grid-template-columns: minmax(126px, 17%) minmax(0, 1fr); align-items: center; min-height: 53px; border: 1px solid var(--line); border-radius: 8px; background: #17232fd9; }
+    .setting-name { padding: 8px 12px; font-size: clamp(12px, 1.25vw, 15px); font-weight: 620; }
+    .choice-set { min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
+    .choice { appearance: none; min-height: 34px; padding: 5px 10px; border: 1px solid #425568; border-radius: 7px; background: #202d3a; color: #dce8f1; font: inherit; font-size: clamp(10px, 1vw, 12px); white-space: nowrap; cursor: pointer; }
+    .choice.selected { border: 2px solid #e5f3ff; padding: 4px 9px; background: #1b4262; color: white; box-shadow: 0 0 0 2px #30689b55; }
+    .choice:focus-visible { outline: 2px solid #f5f8fb; outline-offset: 2px; }
+    .choice:disabled { opacity: .38; cursor: default; }
+    .settings-actions { display: flex; justify-content: flex-end; gap: 9px; }
+    .inline-note { color: var(--muted); font-size: 11px; margin: 4px 0 0; }
+    .smb-form { display: grid; gap: 13px; max-width: 720px; margin-top: 20px; }
+    .smb-field { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 16px; color: #dce8f1; font-size: 14px; }
+    .smb-field input { width: 100%; min-height: 43px; border: 1px solid #425568; border-radius: 7px; background: #111b25; color: white; padding: 9px 12px; font: inherit; }
     .row-label { font-size: clamp(13px, 1.5vw, 18px); font-weight: 600; }
     .row-sub { display: block; color: var(--muted); font-size: clamp(10px, 1.1vw, 13px); margin-top: 3px; font-weight: 400; }
     .row-value { display: flex; align-items: center; gap: 13px; color: #d8e7f4; font-size: clamp(12px, 1.3vw, 15px); white-space: nowrap; }
@@ -80,6 +102,7 @@
     .albums { display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: clamp(5px, .65vw, 8px); overflow: hidden; }
     .album { position: relative; min-width: 0; min-height: 0; display: block; border: 1px solid var(--line); border-radius: 9px; background: #17232f; overflow: hidden; cursor: pointer; }
     .album.focus { border: 2px solid #e5f3ff; box-shadow: 0 0 0 3px #30689b66; }
+    .album:focus-visible { outline: 2px solid #f5f8fb; outline-offset: 2px; }
     .cover { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(135deg, #415d72, #a07853); }
     .cover::before { content: ""; position: absolute; inset: 0; opacity: .7; background: radial-gradient(ellipse at 20% 22%, #f7dbad 0 5%, transparent 6%), linear-gradient(145deg, transparent 44%, #263f43 45% 59%, transparent 60%), linear-gradient(18deg, #233d43 0 31%, transparent 32%); }
     .cover.autumn { background: linear-gradient(135deg, #4e5140, #d18a57 56%, #dfc28c); }
@@ -102,6 +125,20 @@
     .actions { display: flex; gap: 8px; }
     .action { color: white; border: 1px solid #526477; border-radius: 8px; background: var(--panel-3); padding: 6px 15px; font: inherit; font-size: clamp(10px, 1vw, 12px); min-width: 75px; text-align: center; }
     .action.primary { border-color: #4d8ec4; background: var(--blue); font-weight: 650; }
+    .picker-loading { display: none; position: absolute; inset: 22% 10% 13%; z-index: 5; align-items: center; justify-content: center; background: #0b1118eF; border: 1px solid #43576b; border-radius: 12px; box-shadow: 0 16px 44px #000b; padding: 22px; }
+    .picker-loading.visible { display: flex; }
+    .loading-card { width: min(590px, 100%); }
+    .loading-title { display: flex; align-items: center; gap: 14px; font-size: clamp(16px, 1.8vw, 22px); font-weight: 650; }
+    .spinner { flex: 0 0 27px; width: 27px; height: 27px; border: 3px solid #49647d; border-top-color: #8bc8f5; border-radius: 50%; animation: spin .85s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-subtitle { color: var(--muted); margin: 10px 0 14px 41px; font-size: clamp(11px, 1.08vw, 13px); }
+    .loading-steps { list-style: none; padding: 0; margin: 0 0 0 41px; display: grid; gap: 8px; color: var(--soft); font-size: clamp(10px, 1.02vw, 12px); }
+    .loading-steps li { display: flex; align-items: center; gap: 8px; }
+    .loading-steps li::before { content: "○"; width: 13px; color: #718194; }
+    .loading-steps li.done { color: #b9d6eb; }
+    .loading-steps li.done::before { content: "✓"; color: #8fd3a9; }
+    .loading-steps li.current { color: #f5f8fb; }
+    .loading-steps li.current::before { content: "•"; color: #8bc8f5; font-size: 18px; line-height: 10px; }
     .review-items { margin-top: 13px; color: var(--muted); font-size: 12px; }
     @media (max-width: 760px) {
       body { padding: 16px; align-items: flex-start; }
@@ -120,30 +157,69 @@
     </header>
     <nav class="tabs" aria-label="Mock screen">
       <button class="tab" aria-selected="true" data-screen="settings">1 · Settings</button>
-      <button class="tab" aria-selected="false" data-screen="picker">2 · Choose albums</button>
+      <button class="tab" aria-selected="false" data-screen="smbSettings">2 · SMB settings</button>
+      <button class="tab" aria-selected="false" data-screen="picker">3 · Choose albums</button>
     </nav>
     <section class="tv" aria-label="Television screen mockup">
       <article class="screen active" id="settings">
         <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SETTINGS</span></div>
-        <h2>Your slideshow</h2>
-        <p class="subtitle">Choose what appears when your TV is idle.</p>
-        <div class="setting-list">
-          <div class="setting-row"><div class="row-label">Photo source<span class="row-sub">SMB Guest share</span></div><div class="row-value">Connected <span style="color:#8fd3a9">●</span></div></div>
-          <div class="setting-row focus"><div class="row-label">Photo albums<span class="row-sub">Choose the albums in your slideshow</span></div><div class="row-value">All photos <span class="chevron">›</span></div></div>
-          <div class="setting-row"><div class="row-label">Random pool size<span class="row-sub">Applies only to All photos</span></div><div class="row-value">250 <span class="chevron">›</span></div></div>
+        <h2 class="compact-title">Slideshow settings</h2>
+        <div class="settings-table" role="table" aria-label="Slideshow settings">
+          <div class="table-row" role="row"><div class="setting-name" role="rowheader">Photo source</div><div class="choice-set" role="cell" data-choice-group="source">
+            <button class="choice" data-value="sample">Sample pics</button>
+            <button class="choice selected" data-value="smb">SMB share</button>
+            <button class="choice" id="openSmbSettings">SMB settings ›</button>
+          </div></div>
+          <div class="table-row" role="row"><div class="setting-name" role="rowheader">Photos</div><div class="choice-set" role="cell" data-choice-group="photos">
+            <button class="choice selected" data-value="all">All</button>
+            <button class="choice" id="openAlbumPicker" data-value="albums">Choose Albums</button>
+            <span class="inline-note" id="albumSummary" hidden>2 albums · 842 photos</span>
+          </div></div>
+          <div class="table-row" role="row"><div class="setting-name" role="rowheader">Pool</div><div class="choice-set" role="cell" data-choice-group="pool" id="poolChoices">
+            <button class="choice" data-value="100">100</button>
+            <button class="choice selected" data-value="250">250</button>
+            <button class="choice" data-value="500">500</button>
+            <button class="choice" data-value="1000">1,000</button>
+            <span class="inline-note">Only used for All</span>
+          </div></div>
+          <div class="table-row" role="row"><div class="setting-name" role="rowheader">Interval</div><div class="choice-set" role="cell" data-choice-group="interval">
+            <button class="choice" data-value="10">10 secs</button>
+            <button class="choice selected" data-value="30">30 secs</button>
+            <button class="choice" data-value="60">1 min</button>
+            <button class="choice" data-value="300">5 min</button>
+            <button class="choice" data-value="900">15 min</button>
+          </div></div>
+          <div class="table-row" role="row"><div class="setting-name" role="rowheader">Label</div><div class="choice-set" role="cell" data-choice-group="label">
+            <button class="choice selected" data-value="location-date">Location + date</button>
+            <button class="choice" data-value="none">None</button>
+          </div></div>
         </div>
         <div class="spacer"></div>
-        <div class="footer"><span><span class="key">OK</span> Open setting</span><span><span class="key">BACK</span> Return</span></div>
+        <div class="footer"><span class="inline-note" id="settingsStatus">Changes take effect when saved.</span><span class="settings-actions"><button class="action primary" id="saveSettings">Save</button><button class="action" id="cancelSettings">Cancel</button></span></div>
+      </article>
+
+      <article class="screen" id="smbSettings">
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SMB SETTINGS</span></div>
+        <h2 class="compact-title">Photos share</h2>
+        <p class="subtitle">These values are filled from your saved connection. Edit them only if your share has moved.</p>
+        <div class="smb-form">
+          <label class="smb-field"><span>IP address</span><input id="smbHost" value="192.0.2.10" aria-label="IP address (example)" /></label>
+          <label class="smb-field"><span>Share name</span><input id="smbShare" value="Photos" /></label>
+          <label class="smb-field"><span>Library path</span><input id="smbPath" value="Photos Library.photoslibrary/originals" /></label>
+          <p class="inline-note">The sample IP is from a documentation-only address range. Your app will show its saved address here.</p>
+        </div>
+        <div class="spacer"></div>
+        <div class="footer"><span>Save changes on the main settings screen.</span><span><button class="action" id="backToSettings">Back</button></span></div>
       </article>
 
       <article class="screen" id="picker">
         <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SMB · PHOTO ALBUMS</span></div>
-        <div class="picker-head"><div><h2>Choose albums</h2><p class="subtitle">Select albums · duplicates are shown once</p></div></div>
+        <div class="picker-head"><div><h2>Choose albums</h2><p class="subtitle">Cached on this TV · Updated Oct 17, 2026 · duplicates are shown once</p></div></div>
         <div class="toolbar">
           <div class="picker-controls">
             <label class="select-control"><span>Sort</span><select id="sortAlbums" aria-label="Sort albums"><option value="date">Newest</option><option value="name">A–Z</option></select></label>
           </div>
-          <div><button class="text-action" id="selectAll">Select all</button><button class="text-action" id="clearAll">Clear all</button></div>
+          <div><button class="text-action" id="refreshCatalog">Refresh</button><button class="text-action" id="selectAll">Select all</button><button class="text-action" id="clearAll">Clear all</button></div>
         </div>
         <div class="albums" id="albums">
           <article class="album selected focus" data-type="personal" data-date="202509" data-name="2025-09 autumn by the lake"><div class="cover autumn"></div><span class="check">✓</span><div class="album-info"><div class="album-heading"><div class="album-name">2025-09 Autumn by the lake <span class="album-count">(318)</span></div></div></div></article>
@@ -163,10 +239,23 @@
           <article class="album" data-type="personal" data-date="201806" data-name="2018-06 road trip"><div class="cover cabin"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2018-06 Road trip <span class="album-count">(347)</span></div></div></div></article>
           <article class="album" data-type="personal" data-date="" data-name="favorites"><div class="cover favorites"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">Favorites <span class="album-count">(181)</span></div></div></div></article>
         </div>
-        <div class="picker-footer"><div class="pool-summary">2 albums · 842 usable photos · all selected photos included</div><div class="actions"><button class="action">Cancel</button><button class="action primary">Apply</button></div></div>
+        <div class="picker-footer"><div class="pool-summary">2 albums · 842 usable photos · all selected photos included</div><div class="actions"><button class="action" id="cancelAlbums">Cancel</button><button class="action primary" id="applyAlbums">Apply</button></div></div>
+        <div class="picker-loading" id="pickerLoading" aria-live="polite">
+          <div class="loading-card">
+            <div class="loading-title"><span class="spinner" aria-hidden="true"></span><span id="loadingTitle">Preparing album list</span></div>
+            <p class="loading-subtitle" id="loadingStatus">Reading the saved catalog from this TV…</p>
+            <ol class="loading-steps" id="loadingSteps">
+              <li>Connect to the Photos SMB share</li>
+              <li>Copy the database snapshot read-only</li>
+              <li>Read regular albums and memberships</li>
+              <li>Check supported files under originals</li>
+              <li>Save the catalog on this TV</li>
+            </ol>
+          </div>
+        </div>
       </article>
     </section>
-    <p class="review-items">Phase 1 review: regular albums only · All photos stays the default · Apply commits, Back/Cancel discards · overlapping albums deduplicate. Shared albums and the Type filter are deferred.</p>
+    <p class="review-items">Phase 1 review: choose All photos or Choose albums in settings · All photos stays the default · pool size applies only to All photos · first use builds a private TV catalog from SQLite · later opens use the cache · Refresh rebuilds it · picker Apply stages, settings Save commits, Cancel discards · overlapping albums deduplicate. Shared Albums and the Type filter are deferred.</p>
   </main>
   <script>
     const tabs = [...document.querySelectorAll('.tab')];
@@ -176,14 +265,151 @@
       screens.forEach(screen => screen.classList.toggle('active', screen.id === name));
     }
     tabs.forEach(tab => tab.addEventListener('click', () => showScreen(tab.dataset.screen)));
+    let catalogCached = false;
+    const loading = document.getElementById('pickerLoading');
+    const loadingTitle = document.getElementById('loadingTitle');
+    const loadingStatus = document.getElementById('loadingStatus');
+    const loadingSteps = [...document.querySelectorAll('#loadingSteps li')];
+    let loadingTimer;
+    function startCatalogWork(refresh) {
+      clearInterval(loadingTimer);
+      loading.classList.add('visible');
+      loadingTitle.textContent = refresh ? 'Refreshing album list' : 'Preparing album list';
+      let step = -1;
+      const cachedSteps = ['Read the saved catalog from this TV', 'Open the album list'];
+      const refreshSteps = [
+        'Connect to the Photos SMB share',
+        'Copy the database snapshot read-only',
+        'Read regular albums and memberships',
+        'Check supported files under originals',
+        'Save the catalog on this TV',
+      ];
+      const useDatabase = refresh || !catalogCached;
+      const activeSteps = useDatabase ? refreshSteps : cachedSteps;
+      const stepLabels = useDatabase ? refreshSteps : cachedSteps;
+      loadingSteps.forEach((row, index) => {
+        row.textContent = stepLabels[index] || '';
+        row.className = '';
+        row.hidden = index >= stepLabels.length;
+      });
+      function advance() {
+        step += 1;
+        if (step >= activeSteps.length) {
+          clearInterval(loadingTimer);
+          catalogCached = true;
+          loading.classList.remove('visible');
+          return;
+        }
+        loadingStatus.textContent = `${stepLabels[step]}…`;
+        loadingSteps.forEach((row, index) => {
+          row.classList.toggle('done', index < step);
+          row.classList.toggle('current', index === step);
+        });
+      }
+      advance();
+      loadingTimer = setInterval(advance, useDatabase ? 750 : 180);
+    }
+    const albumSummary = document.getElementById('albumSummary');
+    const settingsStatus = document.getElementById('settingsStatus');
+    const poolChoices = [...document.querySelectorAll('[data-choice-group="pool"] .choice')];
+    function updatePoolChoices() {
+      const albumsMode = document.querySelector('[data-choice-group="photos"] .choice.selected')?.dataset.value === 'albums';
+      poolChoices.forEach(choice => { choice.disabled = albumsMode; });
+      albumSummary.hidden = !albumsMode;
+    }
+    function captureSettings() {
+      const choices = {};
+      document.querySelectorAll('.choice-set[data-choice-group]').forEach(group => {
+        choices[group.dataset.choiceGroup] = group.querySelector('.choice.selected[data-value]')?.dataset.value;
+      });
+      return {
+        choices,
+        host: document.getElementById('smbHost').value,
+        share: document.getElementById('smbShare').value,
+        path: document.getElementById('smbPath').value,
+        albumSummary: albumSummary.textContent,
+        selectedAlbums: [...document.querySelectorAll('.album.selected')].map(album => album.dataset.name),
+      };
+    }
+    function restoreSettings(saved) {
+      document.querySelectorAll('.choice-set[data-choice-group]').forEach(group => {
+        group.querySelectorAll('.choice[data-value]').forEach(choice => choice.classList.toggle('selected', choice.dataset.value === saved.choices[group.dataset.choiceGroup]));
+      });
+      document.getElementById('smbHost').value = saved.host;
+      document.getElementById('smbShare').value = saved.share;
+      document.getElementById('smbPath').value = saved.path;
+      albumSummary.textContent = saved.albumSummary;
+      document.querySelectorAll('.album').forEach(album => {
+        const selected = saved.selectedAlbums.includes(album.dataset.name);
+        album.classList.toggle('selected', selected);
+        album.setAttribute('aria-pressed', String(selected));
+        album.querySelector('.check').textContent = selected ? '✓' : '';
+      });
+      updatePoolChoices();
+    }
+    let savedSettings = captureSettings();
+    let stagedAlbumIdsBeforePicker = [];
+    document.querySelectorAll('.choice-set[data-choice-group] .choice[data-value]:not(#openAlbumPicker)').forEach(choice => {
+      choice.addEventListener('click', () => {
+        const group = choice.closest('.choice-set');
+        group.querySelectorAll('.choice[data-value]').forEach(option => option.classList.toggle('selected', option === choice));
+        updatePoolChoices();
+      });
+    });
+    function openAlbumPicker() {
+      stagedAlbumIdsBeforePicker = [...document.querySelectorAll('.album.selected')];
+      showScreen('picker');
+      startCatalogWork(false);
+    }
+    document.getElementById('openAlbumPicker').addEventListener('click', openAlbumPicker);
+    document.getElementById('applyAlbums').addEventListener('click', () => {
+      const selectedCount = document.querySelectorAll('.album.selected').length;
+      document.getElementById('albumSummary').textContent = `${selectedCount} albums · 842 photos`;
+      document.querySelectorAll('[data-choice-group="photos"] .choice').forEach(choice => choice.classList.toggle('selected', choice.id === 'openAlbumPicker'));
+      updatePoolChoices();
+      showScreen('settings');
+    });
+    document.getElementById('cancelAlbums').addEventListener('click', () => {
+      document.querySelectorAll('.album').forEach(album => {
+        const selected = stagedAlbumIdsBeforePicker.includes(album);
+        album.classList.toggle('selected', selected);
+        album.setAttribute('aria-pressed', String(selected));
+        album.querySelector('.check').textContent = selected ? '✓' : '';
+      });
+      showScreen('settings');
+    });
+    document.getElementById('openSmbSettings').addEventListener('click', () => showScreen('smbSettings'));
+    document.getElementById('backToSettings').addEventListener('click', () => showScreen('settings'));
+    document.getElementById('saveSettings').addEventListener('click', () => {
+      savedSettings = captureSettings();
+      settingsStatus.textContent = 'Settings saved.';
+    });
+    document.getElementById('cancelSettings').addEventListener('click', () => {
+      restoreSettings(savedSettings);
+      settingsStatus.textContent = 'Changes discarded.';
+    });
+    document.getElementById('refreshCatalog').addEventListener('click', () => startCatalogWork(true));
     const albumGrid = document.getElementById('albums');
     const albumCards = [...document.querySelectorAll('.album')];
-    document.querySelectorAll('.album').forEach(row => row.addEventListener('click', () => {
-      row.classList.toggle('selected');
-      row.querySelector('.check').textContent = row.classList.contains('selected') ? '✓' : '';
-    }));
-    document.getElementById('selectAll').addEventListener('click', () => albumCards.forEach(row => { row.classList.add('selected'); row.querySelector('.check').textContent = '✓'; }));
-    document.getElementById('clearAll').addEventListener('click', () => albumCards.forEach(row => { row.classList.remove('selected'); row.querySelector('.check').textContent = ''; }));
+    document.querySelectorAll('.album').forEach(row => {
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('aria-pressed', String(row.classList.contains('selected')));
+      function toggleAlbum() {
+        row.classList.toggle('selected');
+        row.setAttribute('aria-pressed', String(row.classList.contains('selected')));
+        row.querySelector('.check').textContent = row.classList.contains('selected') ? '✓' : '';
+      }
+      row.addEventListener('click', toggleAlbum);
+      row.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleAlbum();
+        }
+      });
+    });
+    document.getElementById('selectAll').addEventListener('click', () => albumCards.forEach(row => { row.classList.add('selected'); row.setAttribute('aria-pressed', 'true'); row.querySelector('.check').textContent = '✓'; }));
+    document.getElementById('clearAll').addEventListener('click', () => albumCards.forEach(row => { row.classList.remove('selected'); row.setAttribute('aria-pressed', 'false'); row.querySelector('.check').textContent = ''; }));
     document.getElementById('sortAlbums').addEventListener('change', event => {
       const sorted = [...albumCards].sort((a, b) => event.target.value === 'name'
         ? a.dataset.name.localeCompare(b.dataset.name)

@@ -3,6 +3,7 @@ package com.googletv.screensaver.playback
 import android.content.Context
 import com.googletv.screensaver.PhotoLabelMode
 import com.googletv.screensaver.PhotoSourceMode
+import com.googletv.screensaver.PhotoSelectionMode
 import com.googletv.screensaver.SlideshowPreferences
 
 object PhotoSourceFactory {
@@ -29,6 +30,9 @@ object PhotoSourceFactory {
                 preferences.photoLabelMode(),
                 placeNameLookup,
                 context.cacheDir,
+                catalogCacheDirectory = context.filesDir,
+                selectedAlbumIds = preferences.selectedAlbumIds(),
+                selectedAlbumMode = preferences.photoSelectionMode() == PhotoSelectionMode.ALBUMS,
             )
         }
     }
