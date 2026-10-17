@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Album selection · TV screen mockups</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101821;
+      --panel: #17232f;
+      --panel-2: #202d3a;
+      --panel-3: #2a3440;
+      --blue: #30689b;
+      --blue-bright: #62a8e8;
+      --muted: #aab8c7;
+      --soft: #718194;
+      --white: #f5f8fb;
+      --line: #344454;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0b1118;
+      color: var(--white);
+      font: 16px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+    .page { width: min(1160px, 100%); }
+    .page-head { display: flex; align-items: end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
+    .eyebrow { color: var(--blue-bright); text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 750; }
+    h1 { font-size: 23px; margin: 4px 0 0; font-weight: 650; }
+    .review-note { color: var(--muted); font-size: 13px; max-width: 420px; text-align: right; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .tab {
+      appearance: none; border: 1px solid var(--line); background: #141e28; color: var(--muted);
+      padding: 9px 14px; border-radius: 8px; font: inherit; cursor: pointer;
+    }
+    .tab[aria-selected="true"] { color: white; border-color: var(--blue-bright); background: #183650; }
+    .tv {
+      aspect-ratio: 16 / 9; width: 100%; overflow: hidden; position: relative;
+      border: 1px solid #455668; border-radius: 13px;
+      background: radial-gradient(ellipse at 70% 18%, #1b2b3b 0%, var(--bg) 56%);
+      box-shadow: 0 20px 70px #0009, inset 0 0 0 7px #05090d;
+      padding: clamp(18px, 3.1vw, 42px) clamp(26px, 4.5vw, 64px);
+    }
+    .screen { height: 100%; display: none; }
+    .screen.active { display: flex; flex-direction: column; }
+    .topline { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: clamp(10px, 1.08vw, 13px); letter-spacing: .04em; }
+    .brand { display: flex; align-items: center; gap: 10px; color: white; font-weight: 650; letter-spacing: 0; }
+    .brand-mark { width: 23px; height: 23px; border-radius: 7px; background: var(--blue); display: grid; place-items: center; font-size: 12px; }
+    h2 { font-size: clamp(24px, 3.1vw, 38px); line-height: 1.1; margin: clamp(26px, 4vw, 47px) 0 8px; font-weight: 650; letter-spacing: -.025em; }
+    .subtitle { margin: 0; max-width: 690px; color: var(--muted); font-size: clamp(12px, 1.35vw, 16px); }
+    .setting-list { margin-top: clamp(24px, 3.4vw, 40px); display: grid; gap: 10px; max-width: 800px; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 20px; min-height: 64px; border: 1px solid var(--line); border-radius: 10px; background: #17232fd9; }
+    .setting-row.focus { border: 2px solid #e5f3ff; padding: 16px 19px; background: #1b3043; box-shadow: 0 0 0 3px #30689b66; }
+    .row-label { font-size: clamp(13px, 1.5vw, 18px); font-weight: 600; }
+    .row-sub { display: block; color: var(--muted); font-size: clamp(10px, 1.1vw, 13px); margin-top: 3px; font-weight: 400; }
+    .row-value { display: flex; align-items: center; gap: 13px; color: #d8e7f4; font-size: clamp(12px, 1.3vw, 15px); white-space: nowrap; }
+    .chevron { color: var(--blue-bright); font-size: 24px; line-height: 1; }
+    .spacer { flex: 1; }
+    .footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; color: var(--muted); font-size: clamp(10px, 1.08vw, 13px); }
+    .key { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 6px; border: 1px solid #718194; border-radius: 5px; color: #e7eff6; font-size: 11px; margin-right: 5px; }
+    .picker-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+    .picker-head h2 { font-size: clamp(20px, 2.3vw, 28px); margin: 7px 0 0; }
+    .picker-head .subtitle { font-size: clamp(10px, 1vw, 12px); margin-top: 2px; }
+    .count-badge { color: #d9edff; border: 1px solid #46739a; background: #1d3b55; border-radius: 999px; padding: 6px 11px; font-size: clamp(10px, 1.05vw, 13px); white-space: nowrap; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 8px 0 9px; }
+    .picker-controls { display: flex; gap: 9px; flex: 1; min-width: 0; }
+    .select-control { height: clamp(31px, 3.3vw, 40px); border: 1px solid #425568; border-radius: 8px; background: #17232f; color: #eaf2f8; display: flex; align-items: center; padding: 0 10px; font-size: clamp(10px, 1.02vw, 12px); }
+    .select-control { gap: 9px; white-space: nowrap; color: #c8d7e4; }
+    .select-control select { max-width: 125px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+    .select-control option { background: #17232f; }
+    .section-label { color: var(--muted); font-size: clamp(9px, .95vw, 11px); white-space: nowrap; }
+    .text-action { color: #9fcef6; background: transparent; border: 0; font: inherit; font-size: clamp(10px, 1.08vw, 13px); cursor: pointer; padding: 5px 7px; white-space: nowrap; }
+    .albums { display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: clamp(5px, .65vw, 8px); overflow: hidden; }
+    .album { position: relative; min-width: 0; min-height: 0; display: block; border: 1px solid var(--line); border-radius: 9px; background: #17232f; overflow: hidden; cursor: pointer; }
+    .album.focus { border: 2px solid #e5f3ff; box-shadow: 0 0 0 3px #30689b66; }
+    .cover { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(135deg, #415d72, #a07853); }
+    .cover::before { content: ""; position: absolute; inset: 0; opacity: .7; background: radial-gradient(ellipse at 20% 22%, #f7dbad 0 5%, transparent 6%), linear-gradient(145deg, transparent 44%, #263f43 45% 59%, transparent 60%), linear-gradient(18deg, #233d43 0 31%, transparent 32%); }
+    .cover.autumn { background: linear-gradient(135deg, #4e5140, #d18a57 56%, #dfc28c); }
+    .cover.cabin { background: linear-gradient(135deg, #263d47, #7294a0 48%, #ad8b65); }
+    .cover.city { background: linear-gradient(135deg, #242e48, #d37c61 58%, #e7bf82); }
+    .cover.winter { background: linear-gradient(135deg, #5e7b8e, #d5d9d1 55%, #8da7ad); }
+    .cover.coast { background: linear-gradient(135deg, #267580, #78c1bd 48%, #e2b57d); }
+    .cover.spring { background: linear-gradient(135deg, #577765, #b9b67f 53%, #d18c72); }
+    .cover.celebration { background: linear-gradient(135deg, #5f495e, #db9b70 58%, #efc882); }
+    .cover.favorites { background: linear-gradient(135deg, #354b71, #8b83b5 55%, #d7a080); }
+    .cover::after { content: ""; position: absolute; width: 70%; height: 130%; right: -10%; top: 34%; border-radius: 50%; background: #f1ca8a44; transform: rotate(-20deg); }
+    .album-info { position: absolute; inset: auto 0 0; padding: 24px 9px 8px; background: linear-gradient(180deg, transparent, #08111bd9 44%, #08111bf2); }
+    .album-heading { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .album-name { min-width: 0; font-size: clamp(8px, .82vw, 10px); line-height: 1.2; font-weight: 620; text-shadow: 0 1px 3px #000b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .album-count { color: #d1dbe4; font-size: .9em; font-weight: 500; white-space: nowrap; }
+    .check { position: absolute; top: 7px; right: 7px; width: 21px; height: 21px; border-radius: 6px; border: 1.5px solid #e3edf5; background: #12202ba8; display: grid; place-items: center; color: white; font-weight: 800; font-size: 14px; }
+    .selected .check { border-color: var(--blue-bright); background: var(--blue); }
+    .picker-footer { border-top: 1px solid #344454; padding-top: 8px; margin-top: 5px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .pool-summary { color: var(--muted); font-size: clamp(9px, .95vw, 11px); }
+    .actions { display: flex; gap: 8px; }
+    .action { color: white; border: 1px solid #526477; border-radius: 8px; background: var(--panel-3); padding: 6px 15px; font: inherit; font-size: clamp(10px, 1vw, 12px); min-width: 75px; text-align: center; }
+    .action.primary { border-color: #4d8ec4; background: var(--blue); font-weight: 650; }
+    .review-items { margin-top: 13px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 760px) {
+      body { padding: 16px; align-items: flex-start; }
+      .page-head { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .review-note { text-align: left; }
+      .tv { padding: 26px; }
+      .check { width: 18px; height: 18px; flex-basis: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="page-head">
+      <div><div class="eyebrow">Photo Screensaver · design review</div><h1>SMB album selection</h1></div>
+      <div class="review-note">Phase 1: choose regular Photos albums for the slideshow.</div>
+    </header>
+    <nav class="tabs" aria-label="Mock screen">
+      <button class="tab" aria-selected="true" data-screen="settings">1 · Settings</button>
+      <button class="tab" aria-selected="false" data-screen="picker">2 · Choose albums</button>
+    </nav>
+    <section class="tv" aria-label="Television screen mockup">
+      <article class="screen active" id="settings">
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SETTINGS</span></div>
+        <h2>Your slideshow</h2>
+        <p class="subtitle">Choose what appears when your TV is idle.</p>
+        <div class="setting-list">
+          <div class="setting-row"><div class="row-label">Photo source<span class="row-sub">SMB Guest share</span></div><div class="row-value">Connected <span style="color:#8fd3a9">●</span></div></div>
+          <div class="setting-row focus"><div class="row-label">Photo albums<span class="row-sub">Choose the albums in your slideshow</span></div><div class="row-value">All photos <span class="chevron">›</span></div></div>
+          <div class="setting-row"><div class="row-label">Random pool size<span class="row-sub">Applies only to All photos</span></div><div class="row-value">250 <span class="chevron">›</span></div></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="footer"><span><span class="key">OK</span> Open setting</span><span><span class="key">BACK</span> Return</span></div>
+      </article>
+
+      <article class="screen" id="picker">
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SMB · PHOTO ALBUMS</span></div>
+        <div class="picker-head"><div><h2>Choose albums</h2><p class="subtitle">Select albums · duplicates are shown once</p></div></div>
+        <div class="toolbar">
+          <div class="picker-controls">
+            <label class="select-control"><span>Sort</span><select id="sortAlbums" aria-label="Sort albums"><option value="date">Newest</option><option value="name">A–Z</option></select></label>
+          </div>
+          <div><button class="text-action" id="selectAll">Select all</button><button class="text-action" id="clearAll">Clear all</button></div>
+        </div>
+        <div class="albums" id="albums">
+          <article class="album selected focus" data-type="personal" data-date="202509" data-name="2025-09 autumn by the lake"><div class="cover autumn"></div><span class="check">✓</span><div class="album-info"><div class="album-heading"><div class="album-name">2025-09 Autumn by the lake <span class="album-count">(318)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202506" data-name="2025-06 city nights"><div class="cover city"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2025-06 City nights <span class="album-count">(128)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202502" data-name="2025-02 winter hike"><div class="cover winter"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2025-02 Winter hike <span class="album-count">(82)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202412" data-name="2024-12 winter holidays"><div class="cover winter"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2024-12 Winter holidays <span class="album-count">(96)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202409" data-name="2024-09 garden"><div class="cover spring"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2024-09 Garden <span class="album-count">(146)</span></div></div></div></article>
+          <article class="album selected" data-type="personal" data-date="202407" data-name="2024-07 coast trip"><div class="cover coast"></div><span class="check">✓</span><div class="album-info"><div class="album-heading"><div class="album-name">2024-07 Coast trip <span class="album-count">(524)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202401" data-name="2024-01 city weekend"><div class="cover city"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2024-01 City weekend <span class="album-count">(63)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202308" data-name="2023-08 yosemite"><div class="cover coast"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2023-08 Yosemite <span class="album-count">(207)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202212" data-name="2022-12 holidays"><div class="cover autumn"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2022-12 Holidays <span class="album-count">(194)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202206" data-name="2022-06 road trip"><div class="cover cabin"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2022-06 Road trip <span class="album-count">(276)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202109" data-name="2021-09 birthday"><div class="cover celebration"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2021-09 Birthday <span class="album-count">(52)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202105" data-name="2021-05 spring hikes"><div class="cover spring"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2021-05 Spring hikes <span class="album-count">(116)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202012" data-name="2020-12 winter lights"><div class="cover winter"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2020-12 Winter lights <span class="album-count">(88)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="202004" data-name="2020-04 at home"><div class="cover city"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2020-04 At home <span class="album-count">(204)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="201806" data-name="2018-06 road trip"><div class="cover cabin"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">2018-06 Road trip <span class="album-count">(347)</span></div></div></div></article>
+          <article class="album" data-type="personal" data-date="" data-name="favorites"><div class="cover favorites"></div><span class="check"></span><div class="album-info"><div class="album-heading"><div class="album-name">Favorites <span class="album-count">(181)</span></div></div></div></article>
+        </div>
+        <div class="picker-footer"><div class="pool-summary">2 albums · 842 usable photos · all selected photos included</div><div class="actions"><button class="action">Cancel</button><button class="action primary">Apply</button></div></div>
+      </article>
+    </section>
+    <p class="review-items">Phase 1 review: regular albums only · All photos stays the default · Apply commits, Back/Cancel discards · overlapping albums deduplicate. Shared albums and the Type filter are deferred.</p>
+  </main>
+  <script>
+    const tabs = [...document.querySelectorAll('.tab')];
+    const screens = [...document.querySelectorAll('.screen')];
+    function showScreen(name) {
+      tabs.forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.screen === name)));
+      screens.forEach(screen => screen.classList.toggle('active', screen.id === name));
+    }
+    tabs.forEach(tab => tab.addEventListener('click', () => showScreen(tab.dataset.screen)));
+    const albumGrid = document.getElementById('albums');
+    const albumCards = [...document.querySelectorAll('.album')];
+    document.querySelectorAll('.album').forEach(row => row.addEventListener('click', () => {
+      row.classList.toggle('selected');
+      row.querySelector('.check').textContent = row.classList.contains('selected') ? '✓' : '';
+    }));
+    document.getElementById('selectAll').addEventListener('click', () => albumCards.forEach(row => { row.classList.add('selected'); row.querySelector('.check').textContent = '✓'; }));
+    document.getElementById('clearAll').addEventListener('click', () => albumCards.forEach(row => { row.classList.remove('selected'); row.querySelector('.check').textContent = ''; }));
+    document.getElementById('sortAlbums').addEventListener('change', event => {
+      const sorted = [...albumCards].sort((a, b) => event.target.value === 'name'
+        ? a.dataset.name.localeCompare(b.dataset.name)
+        : (b.dataset.date || '000000').localeCompare(a.dataset.date || '000000') || a.dataset.name.localeCompare(b.dataset.name));
+      sorted.forEach(card => albumGrid.appendChild(card));
+    });
+  </script>
+</body>
+</html>
