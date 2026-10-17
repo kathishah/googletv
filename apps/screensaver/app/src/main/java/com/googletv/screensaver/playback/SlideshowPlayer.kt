@@ -3,8 +3,8 @@ package com.googletv.screensaver.playback
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
-import com.hierynomus.mssmb2.SMBApiException
 import com.hierynomus.smbj.session.SMB2GuestSigningRequiredException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -13,16 +13,26 @@ import java.util.concurrent.Future
 /** Loads photo metadata and images off the UI thread, then hands decoded frames to the renderer. */
 class SlideshowPlayer(
     private val photoSource: PhotoSource,
-    intervalMillis: () -> Long,
+    private val intervalMillis: () -> Long,
     private val showSlide: (Slide, Bitmap) -> Unit,
     private val showLoading: () -> Unit,
     private val showEmptyState: () -> Unit,
     private val showError: (String) -> Unit,
+    /** Stored photos shown with [FALLBACK_LABEL] while [photoSource] keeps failing. Null = error text. */
+    private val fallbackSource: PhotoSource? = null,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "photo-source-loader").apply { isDaemon = true }
     }
+    // Stored photos are local, so they get their own thread and never wait behind an SMB timeout.
+    private val fallbackWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "fallback-photo-loader").apply { isDaemon = true }
+    }
+    private var fallbackSlides: List<Slide>? = null // fallback worker thread only
+    private var fallbackCursor = 0 // fallback worker thread only
+    private var fallbackActive = false
+    private val fallbackTick = Runnable { showNextFallback(generation) }
     private val slides = mutableListOf<Slide>()
     private var currentIndex = 0
     private var currentSlide: Slide? = null
@@ -35,6 +45,9 @@ class SlideshowPlayer(
     private var advanceRequestedFor: Slide? = null
     private var schedulerStarted = false
     private var loadingImage = false
+    private var imageFailureStreak = 0
+    private var imageRetryNotBefore = 0L
+    private var delayedAction: Runnable? = null
     private val scheduler = SlideshowScheduler(intervalMillis, ::showNextSlide)
 
     private data class PreparedPhoto(val slide: Slide, val photo: LoadedPhoto)
@@ -48,8 +61,14 @@ class SlideshowPlayer(
         clearPreparedPhoto()
         preloadingSlide = null
         advanceRequestedFor = null
+        imageFailureStreak = 0
+        imageRetryNotBefore = 0L
         val runGeneration = ++generation
         showLoading()
+        requestListing(runGeneration, attempt = 0)
+    }
+
+    private fun requestListing(runGeneration: Int, attempt: Int) {
         pending = worker.submit {
             val result = runCatching { photoSource.loadSlides() }
             mainHandler.post {
@@ -60,21 +79,43 @@ class SlideshowPlayer(
                         slides.addAll(loadedSlides)
                         currentIndex = 0
                         if (slides.isEmpty()) {
+                            exitFallback()
                             showEmptyState()
                         } else {
                             loadSlide(currentIndex, runGeneration)
                         }
                     },
-                    onFailure = { error ->
-                        Log.w(LOG_TAG, "Photo listing failed (${error.javaClass.simpleName})")
-                        showError(if (error.hasGuestSigningFailure()) {
-                            "This server requires SMB signing, which Guest cannot provide. Use a Guest-compatible server or a read-only account."
-                        } else {
-                            "Could not read photos. Check the SMB server, folder, and Guest access."
-                        })
-                    },
+                    onFailure = { error -> handleListingFailure(error, runGeneration, attempt) },
                 )
             }
+        }
+    }
+
+    /**
+     * A listing failure ends the session only when retrying cannot help. Network trouble is retried
+     * with backoff for as long as the dream runs; the error text appears only if it persists.
+     */
+    private fun handleListingFailure(error: Throwable, runGeneration: Int, attempt: Int) {
+        val kind = error.smbFailureKind()
+        Log.w(
+            LOG_TAG,
+            "Photo listing attempt ${attempt + 1} failed ($kind, ${error.safeCauseChain()}, " +
+                "${error.safeSmbStatus()})",
+        )
+        if (kind == SmbFailureKind.CONFIGURATION) {
+            exitFallback()
+            showError(if (error.hasGuestSigningFailure()) {
+                "This server requires SMB signing, which Guest cannot provide. Use a Guest-compatible server or a read-only account."
+            } else {
+                "Could not read photos. Check the SMB server, folder, and Guest access."
+            })
+            return
+        }
+        if (attempt + 1 >= ERROR_AFTER_FAILURES) showUnavailable(runGeneration)
+        val delayMillis = backoffMillis(attempt)
+        Log.i(LOG_TAG, "Retrying photo listing in $delayMillis ms")
+        runDelayed(delayMillis) {
+            if (isCurrent(runGeneration)) requestListing(runGeneration, attempt + 1)
         }
     }
 
@@ -84,6 +125,9 @@ class SlideshowPlayer(
         generation += 1
         pending?.cancel(true)
         pending = null
+        cancelDelayed()
+        exitFallback()
+        photoSource.close()
         scheduler.stop()
         loadingImage = false
         currentSlide = null
@@ -98,10 +142,13 @@ class SlideshowPlayer(
         stop()
         disposed = true
         worker.shutdownNow()
+        fallbackWorker.shutdownNow()
+        photoSource.close()
     }
 
     private fun showNextSlide() {
         if (!active || slides.size < 2 || loadingImage) return
+        if (SystemClock.elapsedRealtime() < imageRetryNotBefore) return
         val nextIndex = (currentIndex + 1) % slides.size
         val nextSlide = slides[nextIndex]
         val ready = prepared?.takeIf { it.slide == nextSlide }
@@ -132,6 +179,7 @@ class SlideshowPlayer(
                 pending = null
                 result.fold(
                     onSuccess = { photo ->
+                        noteImageLoaded()
                         val actualIndex = slides.indexOf(slide)
                         if (actualIndex < 0) {
                             photo.bitmap.recycle()
@@ -152,6 +200,7 @@ class SlideshowPlayer(
     }
 
     private fun presentSlide(index: Int, slide: Slide, photo: LoadedPhoto) {
+        exitFallback()
         currentIndex = index
         currentSlide = slide
         showSlide(slide.copy(description = photo.label.orEmpty()), photo.bitmap)
@@ -166,7 +215,8 @@ class SlideshowPlayer(
 
     private fun preloadNextSlide(runGeneration: Int) {
         if (!isCurrent(runGeneration) || slides.size < 2 || loadingImage ||
-            preloadingSlide != null || prepared != null
+            preloadingSlide != null || prepared != null ||
+            SystemClock.elapsedRealtime() < imageRetryNotBefore
         ) return
         val nextIndex = (currentIndex + 1) % slides.size
         val slide = slides[nextIndex]
@@ -187,6 +237,7 @@ class SlideshowPlayer(
                 }
                 result.fold(
                     onSuccess = { photo ->
+                        noteImageLoaded()
                         if (advanceRequestedFor == slide) {
                             advanceRequestedFor = null
                             presentSlide(actualIndex, slide, photo)
@@ -212,8 +263,12 @@ class SlideshowPlayer(
         runGeneration: Int,
     ) {
         if (!isCurrent(runGeneration) || slides.getOrNull(index) != slide) return
-        val status = error.safeSmbStatus()?.let { ", $it" }.orEmpty()
-        Log.w(LOG_TAG, "Skipping unreadable photo (${error.javaClass.simpleName}$status)")
+        val kind = error.smbFailureKind()
+        if (kind != SmbFailureKind.PER_FILE) {
+            handleTransientImageFailure(index, slide, kind, error, runGeneration)
+            return
+        }
+        Log.w(LOG_TAG, "Skipping unreadable photo (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
         if (prepared?.slide == slide) clearPreparedPhoto()
         slides.removeAt(index)
         if (slides.isEmpty()) {
@@ -231,6 +286,114 @@ class SlideshowPlayer(
         }
     }
 
+    /**
+     * A connection or timeout failure says nothing about the photo, so it stays in the pool. It moves
+     * to the back so one stubborn photo cannot block the rest, and the next attempt waits for a
+     * backoff while the current photo stays on screen. A configuration-type error here (Guest
+     * rejected mid-session) is handled the same way rather than emptying the pool.
+     */
+    private fun handleTransientImageFailure(
+        index: Int,
+        slide: Slide,
+        kind: SmbFailureKind,
+        error: Throwable,
+        runGeneration: Int,
+    ) {
+        imageFailureStreak += 1
+        val delayMillis = backoffMillis(imageFailureStreak - 1)
+        imageRetryNotBefore = SystemClock.elapsedRealtime() + delayMillis
+        Log.w(
+            LOG_TAG,
+            "Photo load failed, keeping it ($kind, streak $imageFailureStreak, " +
+                "${error.safeCauseChain()}, ${error.safeSmbStatus()}); next attempt in $delayMillis ms",
+        )
+        if (prepared?.slide == slide) clearPreparedPhoto()
+        slides.removeAt(index)
+        slides.add(slide)
+        if (index < currentIndex) currentIndex--
+        val nothingShownYet = currentSlide == null
+        if (nothingShownYet) currentIndex = index.coerceAtMost(slides.lastIndex)
+        if (imageFailureStreak >= ERROR_AFTER_FAILURES) showUnavailable(runGeneration)
+        runDelayed(delayMillis) {
+            if (!isCurrent(runGeneration)) return@runDelayed
+            if (nothingShownYet && currentSlide == null) {
+                loadSlide(currentIndex, runGeneration)
+            } else {
+                preloadNextSlide(runGeneration)
+            }
+        }
+    }
+
+    /** Persistent trouble: show stored photos (or, without any, an error) while retries continue. */
+    private fun showUnavailable(runGeneration: Int) {
+        if (fallbackSource == null) {
+            if (currentSlide == null) showError(UNAVAILABLE_MESSAGE)
+            return
+        }
+        if (fallbackActive) return
+        fallbackActive = true
+        Log.i(LOG_TAG, "Showing stored photos until the photo source recovers")
+        showNextFallback(runGeneration)
+    }
+
+    private fun showNextFallback(runGeneration: Int) {
+        val source = fallbackSource ?: return
+        if (!fallbackActive || !isCurrent(runGeneration)) return
+        fallbackWorker.submit {
+            val result = runCatching {
+                val all = fallbackSlides ?: source.loadSlides().also { fallbackSlides = it }
+                val slide = all[fallbackCursor++ % all.size]
+                slide to source.loadImage(slide)
+            }
+            mainHandler.post {
+                if (!fallbackActive || !isCurrent(runGeneration)) {
+                    result.getOrNull()?.second?.bitmap?.recycle()
+                    return@post
+                }
+                result.fold(
+                    onSuccess = { (slide, photo) ->
+                        showSlide(slide.copy(description = FALLBACK_LABEL), photo.bitmap)
+                    },
+                    onFailure = { error ->
+                        Log.w(LOG_TAG, "Stored photo failed (${error.safeCauseChain()})")
+                        if (currentSlide == null) showError(UNAVAILABLE_MESSAGE)
+                    },
+                )
+                mainHandler.postDelayed(fallbackTick, intervalMillis())
+            }
+        }
+    }
+
+    private fun exitFallback() {
+        if (!fallbackActive) return
+        fallbackActive = false
+        Log.i(LOG_TAG, "Stored photos hidden")
+        mainHandler.removeCallbacks(fallbackTick)
+    }
+
+    private fun noteImageLoaded() {
+        imageFailureStreak = 0
+        imageRetryNotBefore = 0L
+    }
+
+    private fun runDelayed(delayMillis: Long, action: () -> Unit) {
+        cancelDelayed()
+        val runnable = Runnable {
+            delayedAction = null
+            action()
+        }
+        delayedAction = runnable
+        mainHandler.postDelayed(runnable, delayMillis)
+    }
+
+    private fun cancelDelayed() {
+        delayedAction?.let(mainHandler::removeCallbacks)
+        delayedAction = null
+    }
+
+    private fun backoffMillis(failures: Int): Long =
+        (INITIAL_BACKOFF_MILLIS shl failures.coerceIn(0, 4)).coerceAtMost(MAX_BACKOFF_MILLIS)
+
     private fun clearPreparedPhoto() {
         prepared?.photo?.bitmap?.recycle()
         prepared = null
@@ -241,14 +404,12 @@ class SlideshowPlayer(
     private fun Throwable.hasGuestSigningFailure(): Boolean =
         generateSequence(this) { it.cause }.any { it is SMB2GuestSigningRequiredException }
 
-    private fun Throwable.safeSmbStatus(): String? =
-        generateSequence(this) { it.cause }
-            .filterIsInstance<SMBApiException>()
-            .firstOrNull()
-            ?.status
-            ?.name
-
     companion object {
         private const val LOG_TAG = "PhotoSource"
+        private const val INITIAL_BACKOFF_MILLIS = 2_000L
+        private const val MAX_BACKOFF_MILLIS = 15_000L
+        private const val ERROR_AFTER_FAILURES = 3
+        private const val UNAVAILABLE_MESSAGE = "Can't reach the photos right now. Still trying…"
+        private const val FALLBACK_LABEL = "SMB failure. Loading…"
     }
 }

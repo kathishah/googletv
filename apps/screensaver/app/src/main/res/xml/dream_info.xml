@@ -1,3 +1,3 @@
 <dream xmlns:android="http://schemas.android.com/apk/res/android"
-    android:previewImage="@drawable/sample_mountain_lake"
+    android:previewImage="@drawable/art_last_supper"
     android:settingsActivity="com.googletv.screensaver/.MainActivity" />

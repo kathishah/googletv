@@ -249,6 +249,7 @@ class MainActivity : Activity() {
             showLoading = view::showLoadingState,
             showEmptyState = view::showEmptyState,
             showError = view::showErrorState,
+            fallbackSource = PhotoSourceFactory.createFallback(this, preferences),
         ).also { it.start() }
     }
 

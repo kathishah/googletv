@@ -25,6 +25,7 @@ class SlideshowDreamService : DreamService() {
             showLoading = slideshowView::showLoadingState,
             showEmptyState = slideshowView::showEmptyState,
             showError = slideshowView::showErrorState,
+            fallbackSource = PhotoSourceFactory.createFallback(this, SlideshowPreferences(this)),
         )
     }
 

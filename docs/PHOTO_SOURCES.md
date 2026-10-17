@@ -84,6 +84,18 @@ The shared package is a clone of the live library. A later read-only comparison 
 
 Assumption change: a Guest share of `originals` exposes only the originals whose server-side permissions let Guest read them. The user chose the storage-permission change and applied it to all 18,601 supported files that were unreadable by others; the clone scan found zero remaining unreadable files after refresh. New files are covered by the daily permission-script run and daily clone. See [the investigation](DEVICE_TESTING.md#heic-status_access_denied-investigation-2026-10-13).
 
+## Stored fallback artworks (2026-10-16)
+
+The app bundles three public-domain artworks as `drawable-nodpi` JPEGs. They are the "Bundled samples" source and the fallback shown while SMB is failing. Each is a faithful photograph or scan of a work whose author died centuries ago; Wikimedia Commons marks all three as public domain. They were downloaded from Commons and resized to at most 3840 px on the long side (JPEG quality 88–90, never upscaled). The originals are not stored in the repository.
+
+| Resource | Work | Commons file (original size) |
+| --- | --- | --- |
+| `art_creation_of_adam.jpg` (3840×1709) | The Creation of Adam, Michelangelo, Sistine Chapel ceiling | [`Adam's Creation Sistine Chapel ceiling by Michelangelo JBU33cut.jpg`](https://commons.wikimedia.org/wiki/File:%27Adam%27s_Creation_Sistine_Chapel_ceiling%27_by_Michelangelo_JBU33cut.jpg) (4492×2000; the cleanest panel-only crop found, 2.25:1, so it letterboxes on a 16:9 TV) |
+| `art_last_supper.jpg` (3840×2088) | The Last Supper, Leonardo da Vinci | [`Leonardo da Vinci - The Last Supper high res.jpg`](https://commons.wikimedia.org/wiki/File:Leonardo_da_Vinci_-_The_Last_Supper_high_res.jpg) (5381×2926, 1.84:1, nearly 16:9). A 9600×4800 composite exists but is 2:1 and 43 MB, and a 4972×2609 version is CC BY-SA 4.0, so neither was used. |
+| `art_lamentation_of_christ.jpg` (2500×2076) | Lamentation of Christ (The Dead Christ and Three Mourners), Mantegna, Pinacoteca di Brera | [`The dead Christ and three mourners, by Andrea Mantegna.jpg`](https://commons.wikimedia.org/wiki/File:The_dead_Christ_and_three_mourners,_by_Andrea_Mantegna.jpg) (2500×2076, the best public-domain full view found; larger Mantegna files on Commons are CC BY-SA detail shots). Pillarboxed on a 16:9 TV. |
+
+"Lamentation of Christ" was taken to mean Mantegna's painting. Giotto's Scrovegni Lamentation is a different work with the same name; swap the file if that was intended.
+
 ## Product implication
 
 “All photos” and “live album sync” are goals, not promises for both providers. The app must show capabilities per source honestly. For this private setup, build the local slideshow first, then add read-only SMB access to available originals or an exported folder (see [what originals contains](#what-originals-contains)). To select actual Photos albums, export them into named folders on the share or generate a separate album index on the Mac mini; do not infer albums from package directories. Google Picker remains an optional limited-selection path.

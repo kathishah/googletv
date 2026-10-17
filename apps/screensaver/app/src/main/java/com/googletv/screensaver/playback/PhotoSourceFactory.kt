@@ -32,4 +32,16 @@ object PhotoSourceFactory {
             )
         }
     }
+
+    /** Stored photos shown, with a status caption, while a network source is failing. */
+    fun createFallback(context: Context, preferences: SlideshowPreferences): PhotoSource? {
+        if (preferences.photoSourceMode() == PhotoSourceMode.BUNDLED) return null
+        val metrics = context.resources.displayMetrics
+        return BundledSamplePhotoSource(
+            context.resources,
+            metrics.widthPixels,
+            metrics.heightPixels,
+            PhotoLabelMode.NONE,
+        )
+    }
 }

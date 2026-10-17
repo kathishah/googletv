@@ -10,6 +10,8 @@ Show personal photos on a TCL Google TV as a slideshow. The user can choose whic
 2. Choose a photo source. For SMB, the app samples photos randomly from all supported images under the configured folder; choosing albums comes later and needs an exported folder or index (see [photo sources](PHOTO_SOURCES.md#product-implication)).
 3. Choose the slide interval, random pool size (100, 250, 500, or 1,000), and label mode (place name plus date, date only, or no label). Place names are best effort; GPS coordinates appear when Android cannot resolve one.
 4. Preview the slideshow immediately.
+
+When the SMB source is unreachable, the slideshow keeps retrying with backoff for as long as it runs. After three consecutive failures it shows three stored public-domain artworks with the caption "SMB failure. Loading…" instead of the date/place label, and returns to the SMB photos as soon as a read succeeds. A configuration error (Guest rejected, signing required, wrong share) shows an error message instead and does not retry. Photos are removed from the session pool only for per-photo errors, never for network errors.
 5. Make the app the system screensaver so it starts on idle. On this TV that is a one-time `adb` setup plus the TCL Auto Launch permission, not a settings menu choice (see [device testing](DEVICE_TESTING.md#setup-sequence)).
 
 ## First build acceptance criteria

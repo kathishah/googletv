@@ -29,6 +29,9 @@ interface PhotoSource {
     fun loadSlides(): List<Slide>
 
     fun loadImage(slide: Slide): LoadedPhoto
+
+    /** Releases any shared connection. Callable from any thread; the source can be used again. */
+    fun close() {}
 }
 
 data class LoadedPhoto(val bitmap: Bitmap, val label: String?)
@@ -41,13 +44,16 @@ class BundledSamplePhotoSource(
     private val placeNameLookup: ((Double, Double) -> String?)? = null,
 ) : PhotoSource {
     private val resourceIds = mapOf(
-        "sample_mountain_lake" to R.drawable.sample_mountain_lake,
-        "sample_redwood_forest" to R.drawable.sample_redwood_forest,
+        "art_creation_of_adam" to R.drawable.art_creation_of_adam,
+        "art_last_supper" to R.drawable.art_last_supper,
+        "art_lamentation_of_christ" to R.drawable.art_lamentation_of_christ,
     )
 
+    // Public-domain artworks; sources are recorded in docs/PHOTO_SOURCES.md.
     override fun loadSlides() = listOf(
-        Slide("sample_mountain_lake", "Mountain lake at sunrise"),
-        Slide("sample_redwood_forest", "Redwood forest trail"),
+        Slide("art_creation_of_adam", "The Creation of Adam · Michelangelo"),
+        Slide("art_last_supper", "The Last Supper · Leonardo da Vinci"),
+        Slide("art_lamentation_of_christ", "Lamentation of Christ · Mantegna"),
     )
 
     override fun loadImage(slide: Slide): LoadedPhoto {
@@ -64,7 +70,9 @@ class BundledSamplePhotoSource(
             targetHeight = targetHeight,
             exifOrientation = metadata.orientation,
         )
-        return LoadedPhoto(bitmap, metadata.label)
+        // The artworks carry no EXIF, so their title is the caption unless labels are off.
+        val label = metadata.label ?: slide.description.takeIf { labelMode != PhotoLabelMode.NONE }
+        return LoadedPhoto(bitmap, label)
     }
 }
 
