@@ -448,3 +448,26 @@ A 60-minute soak of the in-app slideshow (Type Videos, Media All, the real catal
 - **Not covered:** a soak of several hours, and the cause of the black screens.
 - **Build label restored:** the settings screen's "Build <commit> · <time>" line had been dropped in the album-selection rework (commit 00ef614). It is back on the header line, right-aligned, and was checked on the TV (the screen is no taller; the label shows `-dirty` only for a build with uncommitted changes).
 
+
+### Excluding screenshots, documents, and receipts (2026-10-18)
+
+Rule and calibration: [photo sources](PHOTO_SOURCES.md#excluding-screenshots-documents-and-receipts-2026-10-18). Built with `cd apps/screensaver && JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` (124 JVM tests pass, 8 of them new; lint 0 errors, 26 warnings, not compared with an earlier count). Installed with `adb install -r app/build/outputs/apk/debug/app-debug.apk` (build label `ec57cd4f-dirty`, uncommitted).
+
+**Sample-catalog run.** The TV's saved settings and catalog were copied off first. A small catalog was built on the Mac: the full exclusion list (2,457 paths, from the same SQL the app runs, against the clone's last checkpoint) plus one test album of 156 photos sampled from known groups: 24 documents at confidence 0.6 or more, 24 receipts, 12 flagged screenshots, 24 at 0.4 to 0.6, 24 at 0.2 to 0.4, 24 at 0.1 to 0.2, and 24 untagged. The app was set to Choose Albums with that album, 10-second interval, no label, and the in-app preview was started.
+
+- **Log:** `Album catalog read from this TV: 1 albums, 156 paths`, `Album photos: 72 kept, 84 excluded (list of 2457)`, `Album slides ready: 72 photos`. The expected split was 72 shown (the 0.2 to 0.4, 0.1 to 0.2, and untagged groups) and 84 hidden (the other four groups), which is what happened.
+- **Frames:** 48 screenshots, one every ~10 s, viewed as images. Three were overwritten by a mistake of mine (contact-sheet command), so 45 intact frames remain. 44 matched a source thumbnail almost exactly by a pixel comparison (all from the 0.2 to 0.4, 0.1 to 0.2, and untagged groups); the 45th, a car dashboard, matched poorly but is the same photo as one in the 0.2 to 0.4 group when viewed. None of the 45 showed a receipt, a screenshot, a whiteboard, or a document at 0.4 or more. As designed, a few documents below 0.4 did appear: a vehicle registration card, a driving licence, a passport, a scorecard, a customs form, and a photo of a Windows error screen. Those are the gray-zone items.
+- **No errors:** no crash or `AndroidRuntime` lines during the run.
+
+**Real refresh.** This build rejects the saved version 3 catalog, so after restoring the TV's settings the picker's Refresh was run on the real library. The staged database and WAL were reused with nothing new to fetch. Total 49.5 s: SQLite's first read 37.4 s (building the WAL index, as before), the new exclusion query **4.3 s** (2,460 rows; the Mac's immutable read of the older checkpoint gave 2,458), album query 3.0 s, videos 1.7 s, 759 albums, 31,611 album photo references after the exclusion (33,302 before), 2,667 library videos, catalog file 2,207,985 bytes. The 11 saved albums were still selected afterwards, and the selection's picture total went from 953 to 942, so 11 photos in them are now hidden.
+
+**Restored:** settings identical to the saved copy except that album picture total; the dream is still the selected screensaver with the 600000 ms timeout. Scratch thumbnails, frames, sample lists, and the settings and catalog copies were deleted; the system's taxonomy files and two small scripts remain in scratch.
+
+**All mode and screensaver run (same day, same build, real catalog).** The TV's settings were copied first, then set to Media All, Type Photos, pool 100, 10 s, no label.
+
+- **In-app preview, All mode:** the log read `Photo listing found 100 pooled photos in 6289 ms, 0 folders skipped, 2457 of 25697 photos excluded (list of 2459)`. The walk therefore met and skipped 2,457 of the 2,459 listed paths (the other 2 are not on the share), so the share's path spelling matches the catalog's. 30 frames, one every ~10 s, viewed as contact sheets: 29 ordinary photos and 1 printed flyer (a gray-zone item below the 0.4 cutoff). No receipt, screenshot, or whiteboard.
+- **Screensaver:** with `screen_off_timeout` lowered to 60000 ms (original 600000 noted first) and `KEYCODE_HOME` to reset idle, `dumpsys power` showed `Dreaming` with `SlideshowDreamService` at the 60 s poll. The dream's log was the same line: 100 pooled photos in 3805 ms, 2457 of 25697 excluded. 15 frames, ~8 s apart: 15 of 15 ordinary photos.
+- **No crashes** (`AndroidRuntime` and `FATAL` lines: none).
+- **Restored:** `KEYCODE_WAKEUP`, timeout back to 600000, settings file and catalog byte-identical to the copies taken before the run, DreamService still selected. Scratch frames and settings copies deleted.
+
+**Not covered:** a longer run to estimate how often a document below 0.4 (like the flyer) or a never-analyzed photo gets through (1 in 45 frames across All and screensaver so far, small samples), photos newer than the catalog, and the build is still uncommitted.

@@ -147,6 +147,30 @@ class AlbumCatalogMapperTest {
     }
 
     @Test
+    fun excludedPhotosAreDroppedFromEveryAlbumButKeptInTheList() {
+        mapper.addAlbumRow(row(album = "A1", filename = "keep.jpg"))
+        mapper.addAlbumRow(row(album = "A1", filename = "scan.heic"))
+        mapper.addAlbumRow(row(album = "A2", title = "Other", filename = "SCAN.HEIC")) // case differs from the list
+        mapper.addExcludedPhoto("0", "scan.heic")
+        mapper.addExcludedPhoto("0", "scan.heic") // twice: still one entry
+        mapper.addExcludedPhoto("0", "not-in-any-album.png")
+        val index = built()
+        assertEquals(listOf("0/keep.jpg"), index.albums[0].paths)
+        assertEquals(1, index.albums[0].photoCount)
+        assertTrue(index.albums[1].paths.isEmpty())
+        assertEquals(setOf("0/scan.heic", "0/not-in-any-album.png"), index.excludedPaths)
+    }
+
+    @Test
+    fun unsafeOrUnsupportedExcludedPathsAreIgnored() {
+        mapper.addExcludedPhoto("..", "x.jpg")
+        mapper.addExcludedPhoto(null, "x.jpg")
+        mapper.addExcludedPhoto("0", null)
+        mapper.addExcludedPhoto("0", "clip.mov")
+        assertTrue(built().excludedPaths.isEmpty())
+    }
+
+    @Test
     fun bitrateComesFromSizeAndDuration() {
         val item = VideoItem("a/b.mov", 10.0, 12_500_000L) // 10 Mbit per second
         assertEquals(10.0, item.bitrateMbps, 1e-9)

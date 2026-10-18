@@ -18,11 +18,23 @@ internal object PhotosAlbumCatalog {
     // Version 2 added per-album videos, `videoCount`, and a library-wide `videos` list.
     // Version 3 leaves shared-album copies (ZSAVEDASSETTYPE 4) out of the video list: their files are not
     // in `originals`, so about 18% of version 2's videos could never play.
-    internal const val VERSION = 3
+    // Version 4 adds `excluded`, the photos the slideshow never shows (screenshots, documents,
+    // receipts), and drops them from every album's `paths`.
+    internal const val VERSION = 4
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
 
     /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
     private const val SHARED_ASSET_TYPE = 4
+
+    // Exclusion rules, from Photos' own classification (see docs/PHOTO_SOURCES.md, "Excluding
+    // screenshots, documents, and receipts"). `ZSCENECLASSIFICATION` rows of type 0 carry a scene id and a
+    // confidence per asset. Ids 492 (document) and 1086 (receipt) are the same in Apple's scene taxonomy
+    // versions 84 and 99. Sampled on this library, document confidence of 0.4 and up was about 90% to
+    // 100% real documents; 0.2 to 0.4 was about half family photos, so it is not excluded.
+    private const val SCENE_DOCUMENT = 492
+    private const val SCENE_RECEIPT = 1086
+    private const val MIN_DOCUMENT_CONFIDENCE = 0.4
+    private const val MIN_RECEIPT_CONFIDENCE = 0.19
 
     fun read(file: File): AlbumIndex? = runCatching {
         if (!file.isFile) return null
@@ -53,7 +65,13 @@ internal object PhotosAlbumCatalog {
             AlbumEntry(id, title, item.optString("yearMonth").takeUnless { it.isBlank() || it == "null" }, paths, videos)
         }
         val libraryVideos = readVideos(root.getJSONArray("videos"))
-        return AlbumIndex(albums, createdAt, root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 }, libraryVideos)
+        val excludedArray = root.getJSONArray("excluded")
+        val excluded = linkedSetOf<String>()
+        for (index in 0 until excludedArray.length()) {
+            val path = excludedArray.getString(index)
+            require(CatalogPaths.isSafePhotoPath(path) && excluded.add(path))
+        }
+        return AlbumIndex(albums, createdAt, root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 }, libraryVideos, excluded)
     }
 
     private fun readVideos(array: JSONArray): List<VideoItem> {
@@ -139,6 +157,28 @@ internal object PhotosAlbumCatalog {
                 }
             }
             timings.note("video_rows", videoRowCount)
+            var excludedRowCount = 0L
+            timings.time("sqlite_excluded") {
+                // One pass over the classification table: the subquery is not correlated, so SQLite
+                // evaluates it once instead of once per asset.
+                database.rawQuery(
+                    """SELECT a.ZDIRECTORY, a.ZFILENAME
+                       FROM ZASSET a
+                       WHERE a.ZKIND=0 AND a.ZTRASHEDSTATE=0 AND (a.ZISDETECTEDSCREENSHOT=1 OR a.Z_PK IN (
+                           SELECT y.ZASSET
+                           FROM ZSCENECLASSIFICATION c JOIN ZADDITIONALASSETATTRIBUTES y ON y.Z_PK=c.ZASSETATTRIBUTES
+                           WHERE c.ZCLASSIFICATIONTYPE=0 AND (
+                               (c.ZSCENEIDENTIFIER=$SCENE_DOCUMENT AND c.ZCONFIDENCE>=$MIN_DOCUMENT_CONFIDENCE) OR
+                               (c.ZSCENEIDENTIFIER=$SCENE_RECEIPT AND c.ZCONFIDENCE>=$MIN_RECEIPT_CONFIDENCE))))""".trimIndent(),
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        excludedRowCount += 1
+                        mapper.addExcludedPhoto(cursor.stringOrNull(0), cursor.stringOrNull(1))
+                    }
+                }
+            }
+            timings.note("excluded_rows", excludedRowCount)
         } catch (error: Exception) {
             throw AlbumIndexException("The Photos database schema could not be read. Check that the Mac Photos library is available and try Refresh.")
         } finally {
@@ -193,6 +233,7 @@ internal object PhotosAlbumCatalog {
         }
         root.put("albums", albums)
         root.put("videos", encodeVideos(index.videos))
+        root.put("excluded", JSONArray().apply { index.excludedPaths.forEach(::put) })
         return root.toString()
     }
 

@@ -59,6 +59,8 @@ data class AlbumIndex(
     val sourceModifiedMillis: Long? = null,
     /** Every active, non-hidden video in the library, whether or not it is in an album. */
     val videos: List<VideoItem> = emptyList(),
+    /** Photos the Photos app classified as screenshots, documents, or receipts; relative to `originals`. */
+    val excludedPaths: Set<String> = emptySet(),
 )
 data class AlbumCatalogProgress(val message: String, val bytesCopied: Long? = null, val totalBytes: Long? = null)
 class AlbumIndexException(message: String) : IllegalStateException(message)
@@ -100,14 +102,28 @@ class SmbGuestPhotoSource(
 
     override fun loadSlides(): List<Slide> {
         if (selectedAlbumMode) return loadSelectedAlbumSlides()
-        if (!mediaType.includesVideos) return walkPhotoSlides(poolSize).first
+        if (!mediaType.includesVideos) return walkPhotoSlides(poolSize, savedExclusion()).first
         return loadLibrarySlidesWithVideos()
+    }
+
+    /**
+     * Screenshots, documents, and receipts from the saved catalog. Without a usable catalog (never
+     * built, or an older version waiting for a refresh) nothing is filtered; the log says so.
+     */
+    private fun savedExclusion(): PhotoExclusion {
+        val index = PhotosAlbumCatalog.read(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        if (index == null) {
+            Log.w(LOG_TAG, "No usable album catalog: screenshots, documents, and receipts are not filtered until it is refreshed")
+            return PhotoExclusion.NONE
+        }
+        return PhotoExclusion(index.excludedPaths)
     }
 
     /** All photos plus videos from the catalog, or only videos, in proportion to the library's mix. */
     private fun loadLibrarySlidesWithVideos(): List<Slide> {
         ProgressiveReader.purgeStale(videoCacheDirectory)
-        val libraryVideos = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE)).videos
+        val index = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        val libraryVideos = index.videos
         if (mediaType == MediaType.VIDEOS) {
             val picked = SlideMixer.pickVideos(libraryVideos, poolSize)
             if (picked.isEmpty()) {
@@ -116,7 +132,7 @@ class SmbGuestPhotoSource(
             return picked.map(::videoSlide)
         }
         // The walk comes first: the library's photo count decides how many slots videos get.
-        val (photos, photoCount) = walkPhotoSlides(poolSize)
+        val (photos, photoCount) = walkPhotoSlides(poolSize, PhotoExclusion(index.excludedPaths))
         val videoCount = SlideMixer.videoSlots(poolSize, libraryVideos.size, photoCount)
         val videos = SlideMixer.pickVideos(libraryVideos, videoCount).map(::videoSlide)
         return SlideMixer.shuffleTogether(photos.shuffled().take((poolSize - videos.size).coerceAtLeast(0)), videos)
@@ -125,13 +141,18 @@ class SmbGuestPhotoSource(
     private fun videoSlide(item: VideoItem) =
         Slide("$rootPath\\${item.path.replace('/', '\\')}", "", SlideKind.VIDEO, item)
 
-    /** Walks the share and returns a uniform sample of at most [limit] photos and how many photos were seen. */
-    private fun walkPhotoSlides(limit: Int): Pair<List<Slide>, Int> {
+    /**
+     * Walks the share and returns a uniform sample of at most [limit] photos and how many photos were
+     * seen. Photos in [exclusion] are skipped before they are counted or sampled.
+     */
+    private fun walkPhotoSlides(limit: Int, exclusion: PhotoExclusion): Pair<List<Slide>, Int> {
         val startedAt = SystemClock.elapsedRealtime()
         var skippedDirectories = 0
+        var excludedCount = 0
         var supportedPhotoCount = 0
         val slides = withDiskShare { diskShare ->
             skippedDirectories = 0
+            excludedCount = 0
             supportedPhotoCount = 0
             val directories = ArrayDeque<String>()
             val pool = mutableListOf<Slide>()
@@ -159,6 +180,10 @@ class SmbGuestPhotoSource(
                     if (isDirectory) {
                         directories.addLast(path)
                     } else if (isSupportedPhoto(name)) {
+                        if (exclusion.excludesSmbPath(rootPath, path)) {
+                            excludedCount += 1
+                            continue
+                        }
                         supportedPhotoCount += 1
                         val candidate = Slide(path, "Photo $supportedPhotoCount")
                         if (pool.size < limit) {
@@ -176,7 +201,8 @@ class SmbGuestPhotoSource(
         Log.i(
             LOG_TAG,
             "Photo listing found ${slides.size} pooled photos in " +
-                "${SystemClock.elapsedRealtime() - startedAt} ms, $skippedDirectories folders skipped",
+                "${SystemClock.elapsedRealtime() - startedAt} ms, $skippedDirectories folders skipped, " +
+                "$excludedCount of ${supportedPhotoCount + excludedCount} photos excluded (list of ${exclusion.size})",
         )
         return slides to supportedPhotoCount
     }
@@ -323,11 +349,20 @@ class SmbGuestPhotoSource(
         }
         val paths = linkedSetOf<String>()
         if (mediaType.includesPhotos) {
+            // The catalog builder already leaves excluded photos out of album paths; checking again keeps
+            // a hand-edited or older catalog from showing them.
+            val exclusion = PhotoExclusion(index.excludedPaths)
+            var excludedCount = 0
             selectedAlbumIds.forEach { id ->
                 byId.getValue(id).paths.forEach { relative ->
-                    if (isSafeAlbumPath(relative)) paths += "$rootPath\\${relative.replace('/', '\\')}"
+                    if (relative in exclusion) {
+                        excludedCount += 1
+                    } else if (isSafeAlbumPath(relative)) {
+                        paths += "$rootPath\\${relative.replace('/', '\\')}"
+                    }
                 }
             }
+            Log.i(LOG_TAG, "Album photos: ${paths.size} kept, $excludedCount excluded (list of ${exclusion.size})")
             // Opening every photo to check it first took about 21 s for 950 photos at every start. A small
             // sample is enough to catch a share or folder that cannot be read at all; a single unreadable
             // photo is skipped when its turn comes, as it always has been.

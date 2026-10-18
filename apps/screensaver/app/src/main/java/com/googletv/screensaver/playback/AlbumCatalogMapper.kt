@@ -69,6 +69,7 @@ internal class AlbumCatalogMapper(private val zone: ZoneId = ZoneId.systemDefaul
 
     private val albums = linkedMapOf<String, MutableAlbum>()
     private val libraryVideos = linkedMapOf<String, VideoItem>()
+    private val excludedPhotos = linkedSetOf<String>()
 
     fun addAlbumRow(row: AlbumRow) {
         val id = row.albumId ?: return
@@ -89,15 +90,25 @@ internal class AlbumCatalogMapper(private val zone: ZoneId = ZoneId.systemDefaul
         videoItem(row.directory, row.filename, row.durationSeconds, row.sizeBytes)?.let { libraryVideos.putIfAbsent(it.path, it) }
     }
 
-    fun build(createdAtMillis: Long): AlbumIndex = AlbumIndex(
-        albums = albums.values.map { album ->
-            val date = listOfNotNull(album.start, album.end).maxOrNull()
-            val videos = album.videoPaths.mapNotNull { libraryVideos[it] }
-            AlbumEntry(album.id, album.title, date?.let(::yearMonth), album.paths.toList(), videos)
-        },
-        createdAtMillis = createdAtMillis,
-        videos = libraryVideos.values.toList(),
-    )
+    /** A photo the slideshow must never show (screenshot, document, receipt). The SQL decides which. */
+    fun addExcludedPhoto(directory: String?, filename: String?) {
+        CatalogPaths.safePhotoPath(directory, filename)?.let { excludedPhotos.add(it) }
+    }
+
+    /** Excluded photos are dropped from every album here, so album counts and covers never include them. */
+    fun build(createdAtMillis: Long): AlbumIndex {
+        val exclusion = PhotoExclusion(excludedPhotos)
+        return AlbumIndex(
+            albums = albums.values.map { album ->
+                val date = listOfNotNull(album.start, album.end).maxOrNull()
+                val videos = album.videoPaths.mapNotNull { libraryVideos[it] }
+                AlbumEntry(album.id, album.title, date?.let(::yearMonth), album.paths.filter { it !in exclusion }, videos)
+            },
+            createdAtMillis = createdAtMillis,
+            videos = libraryVideos.values.toList(),
+            excludedPaths = excludedPhotos.toSet(),
+        )
+    }
 
     private fun videoItem(directory: String?, filename: String?, duration: Double?, size: Long?): VideoItem? {
         val path = CatalogPaths.safeVideoPath(directory, filename) ?: return null

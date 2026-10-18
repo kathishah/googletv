@@ -25,6 +25,7 @@ class PhotosAlbumCatalogJsonTest {
         createdAtMillis = 1_700_000_000_000L,
         sourceModifiedMillis = 1_700_000_100_000L,
         videos = listOf(VideoItem("0/c.mov", 31.633, 31_000_000L), VideoItem("9/d.mp4", 4.0, 9_000_000L)),
+        excludedPaths = linkedSetOf("0/shot.png", "1/receipt.heic"),
     )
 
     private fun json(change: (JSONObject) -> Unit): String =
@@ -54,7 +55,22 @@ class PhotosAlbumCatalogJsonTest {
     fun version1CatalogsAreRejectedSoTheyGetRebuilt() {
         assertRejected(json { it.put("version", 1) })
         assertRejected(json { it.put("version", 2) }) // version 2 listed shared-album videos that cannot play
-        assertEquals(3, PhotosAlbumCatalog.VERSION)
+        assertRejected(json { it.put("version", 3) }) // version 3 had no exclusion list
+        assertEquals(4, PhotosAlbumCatalog.VERSION)
+    }
+
+    @Test
+    fun theExclusionListIsRequiredSafeAndDuplicateFree() {
+        assertRejected(json { it.remove("excluded") })
+        assertRejected(json { it.getJSONArray("excluded").put(0, "../x.png") })
+        assertRejected(json { it.getJSONArray("excluded").put(0, "0/clip.mov") })
+        assertRejected(json { it.getJSONArray("excluded").put(1, "0/shot.png") })
+    }
+
+    @Test
+    fun anEmptyExclusionListRoundTrips() {
+        val empty = sample.copy(excludedPaths = emptySet())
+        assertEquals(empty, PhotosAlbumCatalog.parse(PhotosAlbumCatalog.encode(empty)))
     }
 
     @Test
