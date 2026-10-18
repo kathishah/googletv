@@ -780,9 +780,11 @@ class MainActivity : Activity() {
     }
 
     private fun loadAlbumCover(album: AlbumEntry, cover: ImageView) {
+        val usePoster = AlbumCoverRules.usesVideoPoster(mediaType, album.photoCount, album.videoCount)
+        val posterCandidates = if (usePoster) AlbumCoverRules.posterCandidates(album.videos) else emptyList()
         val cacheKey = albumCoverCacheKey(album)
         albumCoverCache[cacheKey]?.let { cover.setImageBitmap(it); return }
-        if (album.paths.isEmpty()) return
+        if (!usePoster && album.paths.isEmpty()) return
         if (!requestedCoverIds.add(cacheKey)) return
         val source = albumCoverSource ?: return
         val config = draftSmbConfig
@@ -794,7 +796,11 @@ class MainActivity : Activity() {
             val coverFromCache = bitmap != null
             if (bitmap == null) {
                 cacheFile.delete()
-                bitmap = album.paths.take(4).firstNotNullOfOrNull { relativePath ->
+                bitmap = if (usePoster) {
+                    posterCandidates.firstNotNullOfOrNull { video ->
+                        com.googletv.screensaver.playback.VideoPoster.load(config, video, File(cacheDir, "video-cache"), 480, 300)
+                    }
+                } else album.paths.take(4).firstNotNullOfOrNull { relativePath ->
                     runCatching {
                         source.loadImage(com.googletv.screensaver.playback.Slide(
                             "${config.rootPath}\\${relativePath.replace('/', '\\')}", album.title,
@@ -808,7 +814,7 @@ class MainActivity : Activity() {
             val loadedBitmap = bitmap
             android.util.Log.i(
                 "AlbumPicker",
-                "Cover ${if (loadedBitmap == null) "unavailable" else if (coverFromCache) "loaded from cache" else "loaded from share"} in " +
+                "${if (usePoster) "Poster cover" else "Cover"} ${if (loadedBitmap == null) "unavailable" else if (coverFromCache) "loaded from cache" else "loaded from share"} in " +
                     "${android.os.SystemClock.elapsedRealtime() - coverStartedAt} ms",
             )
             if (loadedBitmap != null) runOnUiThread {
@@ -823,12 +829,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun albumCoverCacheKey(album: AlbumEntry): String {
-        val signature = "${album.id}\u0000${album.paths.take(4).joinToString("\u0000")}".toByteArray(Charsets.UTF_8)
-        return MessageDigest.getInstance("SHA-256").digest(signature).joinToString("") { byte ->
-            "%02x".format(byte.toInt() and 0xff)
+    private fun albumCoverCacheKey(album: AlbumEntry): String =
+        if (AlbumCoverRules.usesVideoPoster(mediaType, album.photoCount, album.videoCount)) {
+            AlbumCoverRules.posterCacheKey(album.id, AlbumCoverRules.posterCandidates(album.videos))
+        } else {
+            AlbumCoverRules.photoCacheKey(album.id, album.paths)
         }
-    }
 
     private fun writeAlbumCoverCache(file: File, bitmap: Bitmap) {
         runCatching {

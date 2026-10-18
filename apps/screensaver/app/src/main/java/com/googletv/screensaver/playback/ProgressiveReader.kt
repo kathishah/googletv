@@ -314,6 +314,22 @@ internal class ProgressiveReader(
         return minOf(sizeBytes.toDouble(), maxOf(prebuffer, toFinishInTime))
     }
 
+    /**
+     * Waits until the last block and the first [headBlocks] blocks are on this TV, which is enough for
+     * `MediaMetadataRetriever` to take a poster frame. Returns false on timeout, failure, or close.
+     */
+    fun awaitHeadAndTail(headBlocks: Int, timeoutMillis: Long): Boolean {
+        val needed = headBlocks.coerceIn(1, blockCount)
+        var remaining = TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        return lock.withLock {
+            while (!(present[lastBlock] && (0 until needed).all { present[it] })) {
+                if (failure != null || stopped || remaining <= 0) return@withLock false
+                remaining = changed.awaitNanos(remaining)
+            }
+            true
+        }
+    }
+
     /** Bytes already on this TV in an unbroken run starting at [position]; zero if its block is missing. */
     fun contiguousBytesFrom(position: Long): Long = lock.withLock {
         if (position < 0 || position >= sizeBytes) return 0L

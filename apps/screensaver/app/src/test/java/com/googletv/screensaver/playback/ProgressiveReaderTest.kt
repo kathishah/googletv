@@ -356,6 +356,56 @@ class ProgressiveReaderTest {
     }
 
     @Test
+    fun awaitHeadAndTailWaitsForTheLastBlockAndTheFirstFew() {
+        val remote = FakeRemoteVideo(bytes(10_500), clock, initialPermits = 2) // tail and head only
+        val reader = readerFor(remote).also { it.start() }
+        val outcome = arrayOfNulls<Boolean>(1)
+        val worker = Thread { outcome[0] = reader.awaitHeadAndTail(3, 5_000) }.apply { start() }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (reader.stats().blocksFetched < 2) { if (System.nanoTime() > deadline) fail("stuck"); Thread.sleep(5) }
+        Thread.sleep(150)
+        assertTrue("returned with only the tail and one head block", worker.isAlive)
+        remote.permits.release(1) // block 1
+        Thread.sleep(150)
+        assertTrue("returned before the third head block", worker.isAlive)
+        remote.permits.release(1) // block 2
+        worker.join(5_000)
+        assertEquals(true, outcome[0])
+        assertEquals(4, reader.stats().blocksFetched) // the tail and head blocks 0, 1 and 2; nothing more was allowed
+        reader.close()
+    }
+
+    @Test
+    fun awaitHeadAndTailGivesUpOnTimeoutFailureAndClose() {
+        val stuck = FakeRemoteVideo(bytes(10_500), clock, initialPermits = 1) // only the tail arrives
+        val a = readerFor(stuck).also { it.start() }
+        assertFalse(a.awaitHeadAndTail(3, 300))
+        a.close()
+
+        val failing = FakeRemoteVideo(bytes(10_500), clock, failInRange = 0L..999L)
+        val b = readerFor(failing).also { it.start() }
+        assertFalse(b.awaitHeadAndTail(3, 3_000))
+        b.close()
+
+        val c = readerFor(FakeRemoteVideo(bytes(10_500), clock, initialPermits = 0)).also { it.start() }
+        val outcome = arrayOfNulls<Boolean>(1)
+        val worker = Thread { outcome[0] = c.awaitHeadAndTail(3, 10_000) }.apply { start() }
+        Thread.sleep(100)
+        c.close()
+        worker.join(3_000)
+        assertEquals(false, outcome[0])
+    }
+
+    @Test
+    fun awaitHeadAndTailHandlesFilesSmallerThanTheHeadRequest() {
+        for (size in listOf(300, 1_500)) {
+            val reader = readerFor(FakeRemoteVideo(bytes(size), clock)).also { it.start() }
+            assertTrue("size $size", reader.awaitHeadAndTail(3, 5_000))
+            reader.close()
+        }
+    }
+
+    @Test
     fun theDefaultFreeSpaceCheckWorksWhenTheCacheFolderDoesNotExistYet() {
         val data = bytes(3_000)
         val file = File(temporaryFolder.root, "video-cache/nested/video-test.part")
