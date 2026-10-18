@@ -81,7 +81,14 @@ class VideoPlaybackProbe : Activity(), SurfaceHolder.Callback {
         val smbConfig = SmbConfig.builder().withSigningRequired(false).withMultiProtocolNegotiate(true)
             .withTimeout(15, TimeUnit.SECONDS).withSoTimeout(15, TimeUnit.SECONDS).build()
         for (line in lines) {
-            val (label, relative, prefetch) = line.split('\t')
+            val parts = line.split('\t')
+            val (label, relative, prefetch) = parts
+            if (prefetch == "P") { // progressive reader; the fourth column is the clip duration in seconds
+                try { playProgressive(holder, config, label, relative, parts[3].toDouble()) } catch (error: Throwable) {
+                    Log.w(TAG, "$label: progressive failed (${error.javaClass.simpleName})")
+                }
+                continue
+            }
             if (relative.startsWith("/")) {
                 try { playOne(holder, null, label, relative, 0) } catch (error: Throwable) { Log.w(TAG, "$label: failed (${error.javaClass.simpleName})") }
                 continue
@@ -105,6 +112,104 @@ class VideoPlaybackProbe : Activity(), SurfaceHolder.Callback {
         }
         Log.i(TAG, "finished")
         main.post { finish() }
+    }
+
+    /**
+     * Plays one clip through the production [ProgressiveReader] and logs the gate decision, start-up,
+     * lateness against the clip length, bytes read against the file size, and leftover temp files.
+     */
+    private fun playProgressive(holder: SurfaceHolder, config: com.googletv.screensaver.playback.SmbSourceConfig, label: String, relative: String, duration: Double) {
+        val cacheDirectory = File(cacheDir, "video-cache")
+        val purged = com.googletv.screensaver.playback.ProgressiveReader.purgeStale(cacheDirectory)
+        val remote = com.googletv.screensaver.playback.SmbRemoteVideo.open(config, relative)
+        val reader = com.googletv.screensaver.playback.ProgressiveReader(
+            remote, com.googletv.screensaver.playback.ProgressiveReader.newCacheFile(cacheDirectory), duration,
+        )
+        val began = SystemClock.elapsedRealtime()
+        reader.start()
+        val gate = reader.awaitReadyToPlay()
+        val gateMillis = SystemClock.elapsedRealtime() - began
+        val afterGate = reader.stats()
+        val gateText = when (gate) {
+            is com.googletv.screensaver.playback.GateResult.Ready -> "Ready waited=${gate.waitedMillis}ms rate=${"%.1f".format(gate.bytesPerSecond / 1e6)}MB/s"
+            is com.googletv.screensaver.playback.GateResult.TooSlow -> "TooSlow estimate=${gate.estimatedWaitMillis}ms"
+            is com.googletv.screensaver.playback.GateResult.Failed -> "Failed (${gate.error.javaClass.simpleName})"
+            com.googletv.screensaver.playback.GateResult.Cancelled -> "Cancelled"
+        }
+        var result = "not played"
+        if (gate is com.googletv.screensaver.playback.GateResult.Ready) {
+            result = runPlayer(holder, com.googletv.screensaver.playback.ProgressiveMediaDataSource(reader), duration)
+        }
+        val stats = reader.stats()
+        reader.close()
+        val left = cacheDirectory.listFiles().orEmpty().size
+        Log.i(
+            TAG,
+            "$label: progressive purged=$purged gate=$gateText gateWall=${gateMillis}ms bufferedAtGate=${afterGate.bufferedBytes} " +
+                "fileBytes=${remote.sizeBytes} duration=${"%.1f".format(duration)}s $result | fetched=${stats.bytesFetched} " +
+                "refetches=${stats.refetches} linkRate=${"%.1f".format((stats.bytesPerSecond ?: 0.0) / 1e6)}MB/s " +
+                "read=${"%.1f".format(stats.readSeconds)}s write=${"%.1f".format(stats.writeSeconds)}s memory=${"%.1f".format((com.googletv.screensaver.playback.LinkRateMemory.shared.estimate() ?: 0.0) / 1e6)}MB/s tempFilesLeft=$left",
+        )
+    }
+
+    /** Plays [source] to the end (or the cap) and describes start-up, lateness, and pauses. Blocks the caller. */
+    private fun runPlayer(holder: SurfaceHolder, source: android.media.MediaDataSource, duration: Double): String {
+        val done = CountDownLatch(1)
+        val begin = SystemClock.elapsedRealtime()
+        var preparedAt = -1L
+        var startedAt = -1L
+        var firstFrameAt = -1L
+        var videoSize = "?"
+        var bufferingEvents = 0
+        var outcome = "timeout"
+        var player: MediaPlayer? = null
+        main.post {
+            try {
+                val mp = MediaPlayer()
+                player = mp
+                mp.setDisplay(holder)
+                mp.setVolume(0f, 0f)
+                mp.setOnPreparedListener {
+                    preparedAt = SystemClock.elapsedRealtime() - begin
+                    startedAt = SystemClock.elapsedRealtime()
+                    it.start()
+                }
+                mp.setOnInfoListener { _, what, _ ->
+                    when (what) {
+                        MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> if (firstFrameAt < 0) firstFrameAt = SystemClock.elapsedRealtime()
+                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> bufferingEvents += 1
+                    }
+                    true
+                }
+                mp.setOnVideoSizeChangedListener { _, w, h ->
+                    videoSize = "${w}x$h"
+                    val parent = surfaceView.parent as FrameLayout
+                    if (w > 0 && h > 0 && parent.width > 0) {
+                        val scale = minOf(parent.width.toFloat() / w, parent.height.toFloat() / h)
+                        surfaceView.layoutParams = FrameLayout.LayoutParams((w * scale).toInt(), (h * scale).toInt(), Gravity.CENTER)
+                    }
+                }
+                mp.setOnCompletionListener { outcome = "completed"; done.countDown() }
+                mp.setOnErrorListener { _, what, extra -> outcome = "error what=$what extra=$extra"; done.countDown(); true }
+                mp.setDataSource(source)
+                mp.prepareAsync()
+            } catch (error: Throwable) {
+                outcome = "setup failed (${error.javaClass.simpleName})"
+                done.countDown()
+            }
+        }
+        done.await((duration * 3_000).toLong() + 60_000L, TimeUnit.MILLISECONDS)
+        val playedMillis = if (startedAt >= 0) SystemClock.elapsedRealtime() - startedAt else 0
+        val released = CountDownLatch(1)
+        main.post {
+            runCatching { player?.stop() }
+            runCatching { player?.release() }
+            released.countDown()
+        }
+        released.await(5, TimeUnit.SECONDS)
+        val lateBy = if (outcome == "completed") playedMillis - (duration * 1000).toLong() else -1L
+        return "outcome=$outcome prepared=${preparedAt}ms firstFrame=${if (firstFrameAt >= 0 && startedAt >= 0) firstFrameAt - startedAt else -1}ms " +
+            "played=${playedMillis}ms lateBy=${lateBy}ms videoSize=$videoSize bufferingEvents=$bufferingEvents"
     }
 
     /** Reads the whole file in 1 MiB blocks on [threads] threads, with no player, and logs the rate. */
