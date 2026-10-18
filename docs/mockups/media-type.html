@@ -131,8 +131,8 @@
       </article>
 
       <article class="screen" id="playback">
-        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SCREENSAVER · VIDEO STATES</span></div>
-        <h2>How a video appears</h2>
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>IN-APP SLIDESHOW · VIDEO STATES</span></div>
+        <h2>How a video appears in the app slideshow</h2>
         <div class="stage">
           <div class="state">
             <div class="state-label"><b>A · Portrait clip.</b> Letterboxed, upright, no crop. Muted. Plays to its end (up to 60 s).</div>
@@ -147,7 +147,7 @@
             <div class="frame"><div class="video land"></div><div class="caption">Coast trip · Jul 2024</div></div>
           </div>
         </div>
-        <p class="legend">No on-screen controls or progress in v1. A clip that fails to open, has no decoder, or stalls for more than 10 s is skipped at once; three failures in a row show the stored artwork.</p>
+        <p class="legend">No on-screen controls or progress in v1. A clip that fails to open, has no decoder, or stalls for more than 10 s is skipped at once; three failures in a row show the stored artwork. The screensaver never plays videos.</p>
         <div class="review-items">
           <span>• Photos keep the Interval; a video plays to its end, capped at 60 s.</span>
           <span>• Clips needing more than 60 s of start wait are skipped for that pass (3 clips on the conservative link).</span>
@@ -158,8 +158,8 @@
   <script>
     const modes = {
       photos: { note: "", pool: "Only used for All", interval: "Photos stay this long.", label: "", status: "Photos only", count: (p, v) => ({ text: p + " photos", none: p === 0 && "No photos" }) },
-      both: { note: "Videos play to the end, up to 60 s.", pool: "Counts photos and videos. Only used for All", interval: "Photos stay this long; videos play to the end.", label: "Videos use date and place from the clip when present.", status: "Photos + videos", count: (p, v) => ({ text: p + " photos · " + v + " videos" }) },
-      videos: { note: "Videos only.", pool: "Counts videos. Only used for All", interval: "Not used: each video plays to the end.", label: "Videos use date and place from the clip when present.", status: "Videos", count: (p, v) => ({ text: v + " videos", none: v === 0 && "No videos" }) },
+      both: { note: "App slideshow only. Screensaver shows 500 random photos.", pool: "Counts photos and videos. Only used for All", interval: "Photos stay this long; videos play to the end.", label: "Videos use date and place from the clip when present.", status: "Photos + videos", count: (p, v) => ({ text: p + " photos · " + v + " videos" }) },
+      videos: { note: "App slideshow only. Screensaver shows 500 random photos.", pool: "Counts videos. Only used for All", interval: "Not used: each video plays to the end.", label: "Videos use date and place from the clip when present.", status: "Videos", count: (p, v) => ({ text: v + " videos", none: v === 0 && "No videos" }) },
     };
     function setMode(key) {
       const m = modes[key];

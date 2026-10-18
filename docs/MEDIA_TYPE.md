@@ -4,7 +4,9 @@ Status: **draft spec, 2026-10-17. Not implemented.** Roadmap item 9. Mock: [medi
 
 ## Goal
 
-Let the user choose what the slideshow and screensaver show: **photos only** (today's behavior, still the default), **photos and videos**, or **videos only**. The choice applies to both *All photos* and *Choose albums*, in the preview and in the DreamService. Videos play muted, letterboxed, in the same shuffled sequence as photos.
+Let the user choose what the **in-app slideshow** shows: **photos only** (today's behavior, still the default), **photos and videos**, or **videos only**. The choice applies to both Media choices (*All* and *Choose Albums*). Videos play muted, letterboxed, in the same shuffled sequence as photos.
+
+**The screensaver (DreamService) never plays videos** (decided by the user, 2026-10-17). When Type is anything other than Photos, the screensaver falls back to 500 random photos from the library; see [Screensaver](#screensaver).
 
 Not in v1: audio, seeking or any playback controls, Live Photo motion, Shared Albums, multi-image layouts ([roadmap item 10](ROADMAP.md)), HDR-specific handling, transitions between slides.
 
@@ -32,7 +34,7 @@ The settings table changes in two rows:
 
 - **Type** is persisted as `media_type` (`PHOTOS`, `PHOTOS_AND_VIDEOS`, `VIDEOS`). A missing or unknown value is `PHOTOS`. It is independent of the saved album IDs and of the **Media** choice (*All* versus *Choose Albums*), like the existing selection mode.
 - Choosing a mode that includes videos needs the catalog (it holds the video list). If no valid catalog exists, the same in-screen loading and refresh flow as album selection opens, with the same actionable error and retry if it fails; the saved mode is not changed until the catalog is ready.
-- **Pool** keeps its meaning (the number of items drawn when Media is *All*) and now counts photos and videos together. It stays disabled when Media is *Choose Albums*.
+- **Pool** keeps its meaning (the number of items drawn when Media is *All*) and now counts photos and videos together. It stays disabled when Media is *Choose Albums*. It applies to the in-app slideshow only; the screensaver fallback below always uses 500.
 - **Label** applies to videos as far as metadata allows (below).
 - **Interval** applies to photos only. A video stays on screen for its own length (below). The settings screen says so under the Interval row ("Videos play to the end, up to 60 s").
 
@@ -42,6 +44,15 @@ The settings table changes in two rows:
 - An album with nothing eligible in the current mode stays selectable and is marked "No videos" (or "No photos"), consistent with the existing rule that an empty album is explained, not hidden.
 - The bottom rail total reads "N albums · X items" (or "X pictures" with Type *Photos*, unchanged). Selection saves immediately and survives Type changes.
 - Covers: unchanged for photo albums. With Type *Videos*, or for an album that has only videos, the cover is a poster frame taken from the first readable video (`MediaMetadataRetriever.getFrameAtTime` through the same SMB data source) and cached in the existing persistent thumbnail cache.
+
+### Screensaver
+
+- The DreamService does not play videos, does not read the video list, and never starts a `MediaPlayer`.
+- **Type = Photos:** unchanged. The screensaver honors Media (*All* or *Choose Albums*), the saved albums, Pool, Interval, and Label.
+- **Type = Photos + Videos or Videos:** the screensaver ignores Media, the saved albums, Type, and Pool, and shows a random pool of **500 photos** drawn from the whole library (the same sampling as *All*). Interval and Label still apply. The saved albums and Type stay saved for the in-app slideshow.
+- The settings screen says so under the Type row: "App slideshow only. Screensaver shows 500 random photos."
+- Implementation: `PhotoSourceFactory.create` takes a `forDream` flag; when it is true and Type is not Photos it returns the *All* source with a pool of 500. The in-app slideshow passes false. This rule is the only change to the screensaver path.
+- Assumption to confirm: "random 500 photos" means the whole library, so a saved album selection is also ignored while Type includes videos.
 
 ### Playback
 
@@ -91,7 +102,7 @@ Why this and not the alternatives: on-demand reads (the test reader) ran the 89 
 ## Permissions and operations
 
 - Videos must be readable by Guest: done by `make_photos_readable.sh` ([decision](PRODUCT.md)); keep the daily routine (script on the live library, then the CCC clone). New videos are owner-only until the script runs.
-- **Risk:** Guest was denied across the whole share twice on 2026-10-17 after CCC activity and recovered after listing the library as another user on the Mac mini ([device testing](DEVICE_TESTING.md)). Cause unknown. During a denial the screensaver shows stored artwork. A CCC after-copy hook that touches the library as another user is a candidate fix if it recurs.
+- **Risk:** Guest was denied across the whole share twice on 2026-10-17 after CCC activity and recovered after listing the library as another user on the Mac mini ([device testing](DEVICE_TESTING.md)). Cause unknown. During a denial the screensaver shows stored artwork, as it already does; videos never run there. A CCC after-copy hook that touches the library as another user is a candidate fix if it recurs.
 - Videos are now world-readable on the LAN, including recently deleted ones. Accepted, recorded in `PRODUCT.md`.
 
 ## Implementation plan
@@ -104,11 +115,15 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 | 2 | Settings and picker | `media_type` preference, Type row (and the Photos row renamed Media), summary text, card counts and badges per mode, empty-state rules; slide model gains a kind and the video fields; photos-only path unchanged | All settings and picker states in the mock work with the D-pad; Photos mode is pixel-for-pixel today's behavior |
 | 3 | Progressive data source | `ProgressiveSmbDataSource`, gate math, cache cleanup; JVM tests with an in-memory share (tail-first, ordering, gate maths, abandonment, cleanup) | On the TV: typical clip starts in under 3 s with no stall; 4K HLG and the 89 Mbps clip start within 5 s of the model and finish with at most one pause; temp files gone afterwards |
 | 4 | Playback in the preview | Video surface in `SlideshowView` sized to the clip, `MediaPlayer` lifecycle, errors and skip rules, labels from container metadata | Portrait, landscape, rotated and HDR clips upright and correctly proportioned (user check); 20 consecutive clips with stable memory; failure and skip paths exercised |
-| 5 | DreamService | Same player in the dream, stop/start lifecycle, mixed sequences, fallback after three failures | Idle activation with a mixed library; 1-hour soak with no leak and an empty temp cache; behavior while Guest is denied |
-| 6 | Videos type and covers | Type *Videos*, Media *All* with proportional videos, poster-frame covers | Each Type in preview and dream; covers cached and persistent |
+| 5 | Screensaver fallback | `forDream` flag in `PhotoSourceFactory`; the dream path returns the 500-photo *All* source when Type is not Photos; the settings note under Type | With Type = Photos + Videos and Type = Videos, idle activation shows 500 random photos and ignores saved albums while honoring Interval and Label; with Type = Photos behavior is unchanged (albums respected); the dream never touches video code or the video list |
+| 6 | Videos type and covers | Type *Videos*, Media *All* with proportional videos, poster-frame covers | Each Type in the in-app slideshow; covers cached and persistent |
 | 7 | Hardening | Recorded logs per clip (phase timings, no names), docs, optional extras below | Docs and roadmap updated; open questions closed or recorded |
 
 Optional later: fetching the next clip's head during playback of a light clip, a rolling cache window for the few clips over the free-space limit, an audio toggle, HDR tuning.
+
+## Decided
+
+- **The screensaver never plays videos** (user, 2026-10-17). With Type other than Photos it shows 500 random photos from the library.
 
 ## Decisions to confirm
 
@@ -123,7 +138,7 @@ Recommended defaults are used above.
 ## Open questions
 
 - Do iPhone video containers carry usable location and date for the label through `MediaMetadataRetriever` on this TV? Check in milestone 4.
-- Does Dolby Vision or HLG content look acceptable on this 100-nit panel in the preview and the dream? Unmeasured.
+- Does Dolby Vision or HLG content look acceptable on this 100-nit panel in the in-app slideshow? Unmeasured.
 - Real throughput variation over a long session (6–10 MB/s observed) and the right safe-start margin; tune with logs in milestone 3.
-- Memory and heap behavior across many consecutive clips; soak in milestones 4 and 5.
-- Whether TCL's idle Art Mode or the dream timeout interrupts long clips (the longest capped clip is 60 s).
+- Memory and heap behavior across many consecutive clips; soak in milestone 4.
+- Whether the TV's idle timers (screen-off timeout, Art Mode) interrupt the in-app slideshow during long clips; the slideshow keeps the screen on while it runs, and the longest capped clip is 60 s.
