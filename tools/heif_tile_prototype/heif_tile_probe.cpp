@@ -29,6 +29,21 @@ std::string error_message(const heif_error& error) {
     return std::string(message) + " (code=" + std::to_string(error.code) + ")";
 }
 
+// libheif reports where the first tile starts relative to the (rotated or cropped) image. On some
+// rotated 24 MP HEICs the value it reports leaves the grid short of the image: with 5 columns of 896,
+// an offset of 700 and an image 4284 wide the tiles reach only 3780, and the right-hand 12% of the
+// picture came out black. The value that does cover the image is the tile size minus the reported one
+// (196 here). The reported offset is kept whenever it covers the image, so images that decoded
+// correctly decode exactly as before.
+int64_t effective_offset(uint32_t offset, uint32_t tile, uint32_t count, uint32_t image) {
+    if (offset == 0 || tile == 0) return offset;
+    const int64_t total = static_cast<int64_t>(count) * tile;
+    if (total - static_cast<int64_t>(offset) >= static_cast<int64_t>(image)) return offset;
+    const int64_t alternative = static_cast<int64_t>(tile) - static_cast<int64_t>(offset % tile);
+    if (total - alternative >= static_cast<int64_t>(image)) return alternative;
+    return offset;
+}
+
 bool decode_tiles(const char* path, int target_width, int target_height, ProbeResult* result) {
     const auto started = std::chrono::steady_clock::now();
     heif_context* context = heif_context_alloc();
@@ -92,6 +107,11 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
     const double scale_x = static_cast<double>(result->width) / tiling.image_width;
     const double scale_y = static_cast<double>(result->height) / tiling.image_height;
 
+    const int64_t left_offset = effective_offset(
+        tiling.left_offset, tiling.tile_width, tiling.num_columns, tiling.image_width);
+    const int64_t top_offset = effective_offset(
+        tiling.top_offset, tiling.tile_height, tiling.num_rows, tiling.image_height);
+
     heif_decoding_options* options = heif_decoding_options_alloc();
     if (options == nullptr) {
         result->info = "decode options allocation failed";
@@ -129,9 +149,9 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
             }
 
             const int64_t tile_origin_x =
-                static_cast<int64_t>(tile_x) * tiling.tile_width - tiling.left_offset;
+                static_cast<int64_t>(tile_x) * tiling.tile_width - left_offset;
             const int64_t tile_origin_y =
-                static_cast<int64_t>(tile_y) * tiling.tile_height - tiling.top_offset;
+                static_cast<int64_t>(tile_y) * tiling.tile_height - top_offset;
             for (int y = 0; y < tile_height; ++y) {
                 const int64_t source_y = tile_origin_y + y;
                 if (source_y < 0 || source_y >= tiling.image_height) continue;
@@ -169,6 +189,11 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
             std::to_string(tiling.tile_height) +
             " output=" + std::to_string(target_width) + "x" +
             std::to_string(target_height) +
+            " offsets=" + std::to_string(tiling.left_offset) + "," + std::to_string(tiling.top_offset) +
+            " used=" + std::to_string(left_offset) + "," + std::to_string(top_offset) +
+            " content=" + std::to_string(result->width) + "x" +
+            std::to_string(result->height) + "+" + std::to_string(offset_x) +
+            "+" + std::to_string(offset_y) +
             " elapsedMs=" + std::to_string(elapsed);
     }
 

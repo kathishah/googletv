@@ -25,8 +25,13 @@ internal object NativeHeifDecoder {
             bitmap.recycle()
             throw IOException(result.removePrefix("FAIL ").ifBlank { "Native HEIF decoding failed." })
         }
-        Log.i(LOG_TAG, "Tile decode completed in ${(System.nanoTime() - started) / 1_000_000} ms")
-        return bitmap
+        Log.i(LOG_TAG, "Tile decode completed in ${(System.nanoTime() - started) / 1_000_000} ms: ${result.removePrefix("PASS ")}")
+        // The canvas is screen-sized with the picture centered; keep just the picture.
+        val content = HeifCanvas.parseContent(result, targetWidth, targetHeight) ?: return bitmap
+        if (content.width == targetWidth && content.height == targetHeight) return bitmap
+        val cropped = Bitmap.createBitmap(bitmap, content.left, content.top, content.width, content.height)
+        if (cropped !== bitmap) bitmap.recycle()
+        return cropped
     }
 
     private external fun decodeInto(path: String, bitmap: Bitmap): String
