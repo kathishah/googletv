@@ -41,6 +41,12 @@ interface PhotoSource {
 
     fun loadImage(slide: Slide): LoadedPhoto
 
+    /**
+     * Whether [slide] is a photo that may share a slide with another (the catalog lists it as portrait).
+     * A photo the source knows nothing about is not pairable, so the safe failure is today's single photo.
+     */
+    fun isPairable(slide: Slide): Boolean = false
+
     /** Opens a video slide and waits until it is safe to play. Only sources that list video slides implement this. */
     fun prepareVideo(slide: Slide): PreparedVideo = throw UnsupportedOperationException("This source has no videos.")
 

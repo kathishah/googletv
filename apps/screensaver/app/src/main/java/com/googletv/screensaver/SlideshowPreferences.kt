@@ -78,6 +78,12 @@ class SlideshowPreferences(context: Context) {
         preferences.edit().putString(KEY_MEDIA_TYPE, type.name).apply()
     }
 
+    fun layoutMode(): LayoutMode = LayoutMode.parse(preferences.getString(KEY_LAYOUT_MODE, null))
+
+    fun setLayoutMode(mode: LayoutMode) {
+        preferences.edit().putString(KEY_LAYOUT_MODE, mode.name).apply()
+    }
+
     fun photoPoolSize(): PhotoPoolSize {
         val count = preferences.getInt(KEY_PHOTO_POOL_SIZE, PhotoPoolSize.default.count)
         return PhotoPoolSize.all.firstOrNull { it.count == count } ?: PhotoPoolSize.default
@@ -132,6 +138,7 @@ class SlideshowPreferences(context: Context) {
         private const val KEY_SOURCE_MODE = "photo_source_mode"
         private const val KEY_PHOTO_SELECTION_MODE = "photo_selection_mode"
         private const val KEY_MEDIA_TYPE = "media_type"
+        private const val KEY_LAYOUT_MODE = "layout_mode"
         private const val KEY_PHOTO_POOL_SIZE = "photo_pool_size"
         private const val KEY_PHOTO_LABEL_MODE = "photo_label_mode"
         private const val KEY_SMB_HOST = "smb_host"

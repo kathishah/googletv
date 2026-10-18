@@ -1,6 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
-        <!-- Developer tool, debug builds only: shows hand-picked portrait pairs without the player. Started with `adb shell am start`. -->
-        <activity android:name=".PairPreviewActivity" android:exported="true" />
-    </application>
-</manifest>

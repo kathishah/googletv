@@ -118,13 +118,25 @@ class SmbGuestPhotoSource(
             Log.w(LOG_TAG, "No usable album catalog: screenshots, documents, and receipts are not filtered until it is refreshed")
             return PathSet.NONE
         }
+        notePortraits(index)
         return PathSet(index.excludedPaths)
     }
+
+    // The catalog's portrait list, kept for isPairable. Replaced on every listing, read on the player's worker thread.
+    @Volatile private var portraitPaths = PathSet.NONE
+
+    private fun notePortraits(index: AlbumIndex) {
+        portraitPaths = PathSet(index.portraitPaths)
+    }
+
+    override fun isPairable(slide: Slide): Boolean =
+        slide.kind == SlideKind.PHOTO && portraitPaths.containsSmbPath(rootPath, slide.id)
 
     /** All photos plus videos from the catalog, or only videos, in proportion to the library's mix. */
     private fun loadLibrarySlidesWithVideos(): List<Slide> {
         ProgressiveReader.purgeStale(videoCacheDirectory)
         val index = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        notePortraits(index)
         val libraryVideos = index.videos
         if (mediaType == MediaType.VIDEOS) {
             val picked = SlideMixer.pickVideos(libraryVideos, poolSize)
@@ -342,6 +354,7 @@ class SmbGuestPhotoSource(
             throw AlbumIndexException("No albums are selected. Choose at least one album or switch to All photos.")
         }
         val index = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        notePortraits(index)
         val byId = index.albums.associateBy { it.id }
         if ((selectedAlbumIds - byId.keys).isNotEmpty()) {
             throw AlbumIndexException("A selected album is no longer in the index. Remove it in Choose albums or return to All photos.")

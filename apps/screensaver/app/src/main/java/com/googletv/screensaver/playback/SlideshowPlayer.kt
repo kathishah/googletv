@@ -5,10 +5,22 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import com.googletv.screensaver.PairScene
 import com.hierynomus.smbj.session.SMB2GuestSigningRequiredException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+
+/**
+ * Turns on Portrait pairs: [showPair] draws two photos and their background, and [screenWidth] by
+ * [screenHeight] is the size the pair is laid out for (the display, as for decoding). Without it the player
+ * never pairs, and every code path below is the single-photo one.
+ */
+class PairingConfig(
+    val showPair: (Slide, Bitmap, Slide, Bitmap, PairScene) -> Unit,
+    val screenWidth: Int,
+    val screenHeight: Int,
+)
 
 /** Loads photo metadata and images off the UI thread, then hands decoded frames to the renderer. */
 class SlideshowPlayer(
@@ -22,6 +34,8 @@ class SlideshowPlayer(
     private val fallbackSource: PhotoSource? = null,
     /** Plays video slides. Only the in-app slideshow passes one; without it video slides are dropped. */
     private val videoStage: VideoStage? = null,
+    /** Pairs portrait photos on one slide (Layout = Portrait pairs). Null = Layout Single. */
+    private val pairing: PairingConfig? = null,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -42,7 +56,8 @@ class SlideshowPlayer(
     private var disposed = false
     @Volatile private var generation = 0
     private var pending: Future<*>? = null
-    private var prepared: PreparedPhoto? = null
+    private var prepared: PreparedSlide? = null
+    private var lastShownAt = 0L
     private var preloadingSlide: Slide? = null
     private var advanceRequestedFor: Slide? = null
     private var schedulerStarted = false
@@ -55,7 +70,27 @@ class SlideshowPlayer(
     private var videoToken = 0
     private val scheduler = SlideshowScheduler(intervalMillis, ::showNextSlide)
 
-    private data class PreparedPhoto(val slide: Slide, val photo: LoadedPhoto)
+    private class PreparedSlide(val slide: Slide, val content: LoadedContent)
+
+    /**
+     * What was decoded for a slide: one photo, or a pair with the scene it is laid out in. When one photo of
+     * a pair failed, [photo] is the one that loaded ([survivorIsFirst] says which) and [failure] is the other's error.
+     */
+    private class LoadedContent(
+        val photo: LoadedPhoto,
+        val partner: LoadedPhoto? = null,
+        val scene: PairScene? = null,
+        val survivorIsFirst: Boolean = true,
+        val failure: Throwable? = null,
+    ) {
+        val isPair: Boolean get() = partner != null && scene != null
+
+        fun recycle() {
+            photo.bitmap.recycle()
+            partner?.bitmap?.recycle()
+            scene?.recycle()
+        }
+    }
 
     fun start() {
         if (active || disposed) return
@@ -68,6 +103,7 @@ class SlideshowPlayer(
         advanceRequestedFor = null
         imageFailureStreak = 0
         imageRetryNotBefore = 0L
+        lastShownAt = 0L
         val runGeneration = ++generation
         showLoading()
         requestListing(runGeneration, attempt = 0)
@@ -81,7 +117,7 @@ class SlideshowPlayer(
                 result.fold(
                     onSuccess = { loadedSlides ->
                         slides.clear()
-                        slides.addAll(loadedSlides)
+                        slides.addAll(planPairs(loadedSlides))
                         currentIndex = 0
                         if (slides.isEmpty()) {
                             exitFallback()
@@ -94,6 +130,15 @@ class SlideshowPlayer(
                 )
             }
         }
+    }
+
+    /** With pairing on, some pairable photos are joined into pair slides; otherwise the list is returned as it is. */
+    private fun planPairs(loaded: List<Slide>): List<Slide> {
+        if (pairing == null) return loaded
+        val planned = PairPlanner.plan(loaded, photoSource::isPairable)
+        val pairs = planned.count { it.partner != null }
+        Log.i(LOG_TAG, "Layout Portrait pairs: ${planned.size} slides from ${loaded.size} (${pairs} pairs, ${loaded.count { photoSource.isPairable(it) }} portrait photos)")
+        return planned
     }
 
     /**
@@ -170,7 +215,7 @@ class SlideshowPlayer(
         if (ready != null) {
             prepared = null
             advanceRequestedFor = null
-            presentSlide(nextIndex, nextSlide, ready.photo)
+            presentSlide(nextIndex, nextSlide, ready.content)
             return
         }
 
@@ -188,23 +233,23 @@ class SlideshowPlayer(
         }
         loadingImage = true
         pending = worker.submit {
-            val result = runCatching { photoSource.loadImage(slide) }
+            val result = runCatching { loadContent(slide) }
             mainHandler.post {
                 if (!isCurrent(runGeneration)) {
-                    result.getOrNull()?.bitmap?.recycle()
+                    result.getOrNull()?.recycle()
                     return@post
                 }
                 loadingImage = false
                 pending = null
                 result.fold(
-                    onSuccess = { photo ->
-                        noteImageLoaded()
+                    onSuccess = { content ->
+                        noteLoaded(content)
                         val actualIndex = slides.indexOf(slide)
                         if (actualIndex < 0) {
-                            photo.bitmap.recycle()
+                            content.recycle()
                         } else {
                             advanceRequestedFor = null
-                            presentSlide(actualIndex, slide, photo)
+                            presentSlide(actualIndex, slide, content)
                         }
                     },
                     onFailure = { error ->
@@ -218,11 +263,39 @@ class SlideshowPlayer(
         }
     }
 
-    private fun presentSlide(index: Int, slide: Slide, photo: LoadedPhoto) {
+    private fun presentSlide(index: Int, slide: Slide, content: LoadedContent) {
         exitFallback()
+        var shown = slide
+        content.failure?.let { failure ->
+            // One photo of the pair failed: the other is shown alone in the pair's place, and the failed
+            // one is dropped (it can never load) or sent to the back (the network said no, not the photo).
+            val kind = failure.smbFailureKind()
+            shown = PairFailureRules.repair(slides, index, content.survivorIsFirst, kind)
+            // Like a single photo, only a network-type failure counts toward the three that bring up the stored artworks.
+            if (kind != SmbFailureKind.PER_FILE) imageFailureStreak += 1
+            Log.w(
+                LOG_TAG,
+                "One photo of a pair failed (${if (kind == SmbFailureKind.PER_FILE) "dropped" else "kept, sent to the back"}: " +
+                    "$kind, ${failure.safeCauseChain()}, ${failure.safeSmbStatus()}), showing the other alone, streak $imageFailureStreak",
+            )
+        }
         currentIndex = index
-        currentSlide = slide
-        showSlide(slide.copy(description = photo.label.orEmpty()), photo.bitmap)
+        currentSlide = shown
+        val now = SystemClock.elapsedRealtime()
+        val partner = shown.partner
+        if (content.isPair && partner != null) {
+            pairing?.showPair?.invoke(
+                shown.copy(description = content.photo.label.orEmpty()), content.photo.bitmap,
+                partner.copy(description = content.partner?.label.orEmpty()), content.partner!!.bitmap,
+                content.scene!!,
+            )
+        } else {
+            showSlide(shown.copy(description = content.photo.label.orEmpty()), content.photo.bitmap)
+        }
+        if (pairing != null) {
+            Log.i(LOG_TAG, "Slide shown: ${if (content.isPair) "pair" else "single"}, ${if (lastShownAt == 0L) 0 else now - lastShownAt} ms after the previous")
+        }
+        lastShownAt = now
         if (!schedulerStarted) {
             schedulerStarted = true
             scheduler.start()
@@ -242,27 +315,27 @@ class SlideshowPlayer(
         if (slide.kind == SlideKind.VIDEO) return // videos are prepared when their turn comes
         preloadingSlide = slide
         pending = worker.submit {
-            val result = runCatching { photoSource.loadImage(slide) }
+            val result = runCatching { loadContent(slide) }
             mainHandler.post {
                 if (!isCurrent(runGeneration)) {
-                    result.getOrNull()?.bitmap?.recycle()
+                    result.getOrNull()?.recycle()
                     return@post
                 }
                 preloadingSlide = null
                 pending = null
                 val actualIndex = slides.indexOf(slide)
                 if (actualIndex < 0) {
-                    result.getOrNull()?.bitmap?.recycle()
+                    result.getOrNull()?.recycle()
                     return@post
                 }
                 result.fold(
-                    onSuccess = { photo ->
-                        noteImageLoaded()
+                    onSuccess = { content ->
+                        noteLoaded(content)
                         if (advanceRequestedFor == slide) {
                             advanceRequestedFor = null
-                            presentSlide(actualIndex, slide, photo)
+                            presentSlide(actualIndex, slide, content)
                         } else {
-                            prepared = PreparedPhoto(slide, photo)
+                            prepared = PreparedSlide(slide, content)
                         }
                     },
                     onFailure = { error ->
@@ -274,6 +347,49 @@ class SlideshowPlayer(
                 )
             }
         }
+    }
+
+    /**
+     * Decodes what a slide shows, on the worker thread: one photo, or both photos of a pair and the scene
+     * they are laid out in. The worker decodes one photo at a time, so a pair takes two decodes; the
+     * previous slide stays up until the whole pair is ready.
+     */
+    private fun loadContent(slide: Slide): LoadedContent {
+        val partnerSlide = slide.partner
+        val config = pairing
+        if (partnerSlide == null || config == null) return LoadedContent(photoSource.loadImage(slide))
+        val startedAt = SystemClock.elapsedRealtime()
+        val first = runCatching { photoSource.loadImage(slide) }
+        val firstDoneAt = SystemClock.elapsedRealtime()
+        val second = runCatching { photoSource.loadImage(partnerSlide) }
+        val decodedAt = SystemClock.elapsedRealtime()
+        return when (val outcome = PairFailureRules.classify(first.exceptionOrNull(), second.exceptionOrNull())) {
+            is PairFailureRules.Outcome.NoneLoaded -> throw outcome.error
+            is PairFailureRules.Outcome.OneLoaded -> {
+                val survivor = (if (outcome.survivorIsFirst) first else second).getOrThrow()
+                LoadedContent(survivor, survivorIsFirst = outcome.survivorIsFirst, failure = outcome.failure)
+            }
+            PairFailureRules.Outcome.BothLoaded -> {
+                val a = first.getOrThrow()
+                val b = second.getOrThrow()
+                val scene = PairScene.build(a.bitmap, b.bitmap, slide.look, config.screenWidth, config.screenHeight)
+                if (scene == null) {
+                    b.bitmap.recycle()
+                    return LoadedContent(a, survivorIsFirst = true, failure = IllegalStateException("No pair layout"))
+                }
+                Log.i(
+                    LOG_TAG,
+                    "Pair loaded: decode ${firstDoneAt - startedAt} + ${decodedAt - firstDoneAt} ms, " +
+                        "background ${SystemClock.elapsedRealtime() - decodedAt} ms, style ${slide.look?.style ?: "black"}",
+                )
+                LoadedContent(a, b, scene)
+            }
+        }
+    }
+
+    /** A fully loaded slide ends the failure streak; a pair that lost a photo does not (it is counted when shown). */
+    private fun noteLoaded(content: LoadedContent) {
+        if (content.failure == null) noteImageLoaded()
     }
 
     /**
@@ -527,7 +643,7 @@ class SlideshowPlayer(
         (INITIAL_BACKOFF_MILLIS shl failures.coerceIn(0, 4)).coerceAtMost(MAX_BACKOFF_MILLIS)
 
     private fun clearPreparedPhoto() {
-        prepared?.photo?.bitmap?.recycle()
+        prepared?.content?.recycle()
         prepared = null
     }
 

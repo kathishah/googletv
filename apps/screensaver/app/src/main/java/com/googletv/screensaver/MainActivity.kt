@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.googletv.screensaver.playback.PhotoSourceFactory
+import com.googletv.screensaver.playback.PairingConfig
 import com.googletv.screensaver.playback.SlideshowPlayer
 import com.googletv.screensaver.playback.AlbumEntry
 import com.googletv.screensaver.playback.AlbumCatalogProgress
@@ -925,6 +926,9 @@ class MainActivity : Activity() {
             showError = view::showErrorState,
             fallbackSource = PhotoSourceFactory.createFallback(this, preferences),
             videoStage = if (preferences.mediaType().includesVideos) VideoSurfaceStage(view) else null,
+            pairing = if (preferences.layoutMode() == LayoutMode.PORTRAIT_PAIRS) {
+                PairingConfig(view::showPair, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+            } else null,
         ).also { it.start() }
     }
 
