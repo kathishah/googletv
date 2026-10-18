@@ -5,7 +5,8 @@ package com.googletv.screensaver
 // Setup (see docs/DEVICE_TESTING.md): copy into the app's package, add
 //   <activity android:name=".VideoPlaybackProbe" android:exported="true" />
 // to the manifest, build, install, write "label<TAB>path relative to originals<TAB>prefetch blocks"
-// lines to files/vtest.txt with run-as, then `adb shell am start -n com.googletv.screensaver/.VideoPlaybackProbe`.
+// lines to files/vtest.txt with run-as (a path starting with "/" is played from local storage instead of
+// SMB, as a control for network effects), then `adb shell am start -n com.googletv.screensaver/.VideoPlaybackProbe`.
 // Logs use the VideoProbe tag and contain only the labels from that file: no filenames or hosts.
 
 import android.app.Activity
@@ -81,6 +82,10 @@ class VideoPlaybackProbe : Activity(), SurfaceHolder.Callback {
             .withTimeout(15, TimeUnit.SECONDS).withSoTimeout(15, TimeUnit.SECONDS).build()
         for (line in lines) {
             val (label, relative, prefetch) = line.split('\t')
+            if (relative.startsWith("/")) {
+                try { playOne(holder, null, label, relative, 0) } catch (error: Throwable) { Log.w(TAG, "$label: failed (${error.javaClass.simpleName})") }
+                continue
+            }
             try {
                 // A fresh connection per clip: stopping read-ahead interrupts in-flight reads, which
                 // breaks whichever SMB connection they were using.
@@ -133,13 +138,13 @@ class VideoPlaybackProbe : Activity(), SurfaceHolder.Callback {
         Log.i(TAG, "$label: raw read threads=$threads bytes=${total.get()} seconds=${"%.1f".format(seconds)} rate=${"%.1f".format(total.get() / seconds / 1e6)}MB/s (${"%.0f".format(total.get() * 8 / seconds / 1e6)} Mbps)")
     }
 
-    private fun playOne(holder: SurfaceHolder, share: DiskShare, label: String, path: String, prefetch: Int) {
-        val file = share.openFile(
+    private fun playOne(holder: SurfaceHolder, share: DiskShare?, label: String, path: String, prefetch: Int) {
+        val file = share?.openFile(
             path, EnumSet.of(AccessMask.GENERIC_READ), EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
             SMB2ShareAccess.ALL, SMB2CreateDisposition.FILE_OPEN, EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE),
         )
-        val size = file.fileInformation.standardInformation.endOfFile
-        val source = SmbMediaDataSource(file, size, prefetch)
+        val size = file?.fileInformation?.standardInformation?.endOfFile ?: File(path).length()
+        val source = file?.let { SmbMediaDataSource(it, size, prefetch) }
         val done = CountDownLatch(1)
         val released = CountDownLatch(1)
         val begin = SystemClock.elapsedRealtime()
@@ -207,7 +212,7 @@ class VideoPlaybackProbe : Activity(), SurfaceHolder.Callback {
                 }
                 mp.setOnCompletionListener { outcome = "completed"; done.countDown() }
                 mp.setOnErrorListener { _, what, extra -> outcome = "error what=$what extra=$extra"; done.countDown(); true }
-                mp.setDataSource(source)
+                if (source != null) mp.setDataSource(source) else mp.setDataSource(path)
                 mp.prepareAsync()
                 main.postDelayed(sampler, 250)
             } catch (error: Throwable) {
@@ -225,16 +230,16 @@ class VideoPlaybackProbe : Activity(), SurfaceHolder.Callback {
             released.countDown()
         }
         released.await(5, TimeUnit.SECONDS)
-        source.close()
-        runCatching { file.close() }
-        val mbps = if (source.fetchNanos.get() > 0) source.bytes.get() / (source.fetchNanos.get() / 1e9) / 1e6 else 0.0
+        source?.close()
+        runCatching { file?.close() }
+        val mbps = if (source != null && source.fetchNanos.get() > 0) source.bytes.get() / (source.fetchNanos.get() / 1e9) / 1e6 else 0.0
         Log.i(
             TAG,
             "$label: prefetch=${prefetch}MiB outcome=$outcome prepared=${preparedAt}ms firstFrame=" +
                 "${if (firstFrameAt >= 0) firstFrameAt - begin else -1}ms played=${playedMillis}ms videoSize=$videoSize " +
                 "bufferingEvents=$bufferingEvents bufferingMs=$bufferingMillis stalls=$stalls stallMs=$stallMillis " +
-                "smbBytes=${source.bytes.get()} fileBytes=$size readAtCalls=${source.readCalls.get()} fetches=${source.fetches.get()} " +
-                "refetches=${source.refetches.get()} maxFetch=${source.maxFetchMillis.get()}ms " +
+                "smbBytes=${source?.bytes?.get() ?: 0} fileBytes=$size readAtCalls=${source?.readCalls?.get() ?: 0} fetches=${source?.fetches?.get() ?: 0} " +
+                "refetches=${source?.refetches?.get() ?: 0} maxFetch=${source?.maxFetchMillis?.get() ?: 0}ms " +
                 "fetchRate=${"%.1f".format(mbps)}MB/s shape=$shape",
         )
     }
