@@ -1,6 +1,6 @@
 # Multi-image layout: portrait pairs
 
-Status: **in progress, started 2026-10-18.** Milestones 1 to 4 (catalog v5, planner and fit, renderer, player integration) are done; see the [plan](#implementation-plan). Roadmap item 10, first part. Mock: [portrait-pairs.html](mockups/portrait-pairs.html) (today's single portrait, the plain pair, and four three-slice styles: pinstripes, diamond lattice, walnut frame, brass fillet mat).
+Status: **in progress, started 2026-10-18.** Milestones 1 to 5 (catalog v5, planner and fit, renderer, player integration, settings and screensaver) are done, so Portrait pairs is built end to end; see the [plan](#implementation-plan). Roadmap item 10, first part. Mock: [portrait-pairs.html](mockups/portrait-pairs.html) (today's single portrait, the plain pair, and four three-slice styles: pinstripes, diamond lattice, walnut frame, brass fillet mat).
 
 ## Goal
 
@@ -51,7 +51,7 @@ From the clone's `Photos.sqlite`, last checkpoint, read-only, counts only. The p
 
 ### Settings
 
-A new row, **Layout**, with **Single** (default) and **Portrait pairs**. It goes after **Interval** and before **Label**; the screen has room for one more row only if row spacing is tightened slightly, to be checked on the TV. Under the row: "Two portrait photos side by side. Landscape photos stay full screen."
+A new row, **Layout**, with **Single** (default) and **Portrait pairs**. It goes after **Interval** and before **Label**. As built, the row spacing is tightened (rows 44 dp instead of 52, buttons 36 dp instead of 42) so seven rows still fit with the video note showing, and the note "Two portrait photos side by side. Landscape photos stay full screen." sits beside the buttons (like the album summary beside Media) instead of under the row.
 
 - Persisted as `layout_mode` (`SINGLE`, `PORTRAIT_PAIRS`); a missing or unknown value is `SINGLE`.
 - It is independent of Media, Type, Pool, Interval, and Label, and is saved with the rest on **Save**.
@@ -145,7 +145,7 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 | 2 | `PairPlanner`, `PairFit`, and the look chooser (**done 2026-10-18**) | Pure Kotlin: the planning pass with the 0.6 pair probability and a passed-in random source, the rectangles, and the style and variant chooser (never the same style twice in a row); JVM tests (odd counts, no pairables, videos, a fixed seed gives a fixed plan, probability 0 gives no pairs, probability 1 pairs all, rectangles for every combination in the table, near-limit aspects, no repeated style) | Tests pass; the table's fill figures reproduce; over 10,000 simulated photos about 60% of portraits end up paired. **Met:** see [device testing](DEVICE_TESTING.md#portrait-pairs-milestone-2-planner-and-fit-2026-10-18) (no TV step: pure Kotlin) |
 | 3 | Renderer (**done 2026-10-18**) | Second photo layer, per-photo labels, `PairFit` in `SlideshowView`, and the three-slice background (the four styles, the color sampling, the black fallback); a test pair from a sample catalog in the in-app preview | Screenshots of a 3:4 pair in each of the four styles, a 3:4 + 2:3 pair, and a rotated-orientation pair: upright, equal height, three equal slices, labels inside their photos, no black; the user picks the styles to keep. **Met** (the user's pick is still to come, at the end): see [device testing](DEVICE_TESTING.md#portrait-pairs-milestone-3-renderer-2026-10-18) |
 | 4 | Player integration (**done 2026-10-18**) | Slides carry a partner, preload both, failure rules (one fails, not ready, three failures), stored artworks stay single | Real portrait photos from the library in the in-app slideshow: pair timing with 12 MP and 24 MP photos, no blank frames, failure paths exercised, a 30-minute soak with stable memory. **Met:** see [device testing](DEVICE_TESTING.md#portrait-pairs-milestone-4-player-integration-2026-10-18) |
-| 5 | Settings and screensaver | `layout_mode`, the Layout row and note, `PhotoSourceFactory` and dream wiring, docs | Setting persists; idle activation shows pairs with Interval honored; Single unchanged; the screen has no clipped rows |
+| 5 | Settings and screensaver (**done 2026-10-18**) | `layout_mode`, the Layout row and note, `PhotoSourceFactory` and dream wiring, docs | Setting persists; idle activation shows pairs with Interval honored; Single unchanged; the screen has no clipped rows. **Met:** see [device testing](DEVICE_TESTING.md#portrait-pairs-milestone-5-settings-and-screensaver-2026-10-18) |
 
 ## Decided
 

@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var albumSummary: TextView
     private lateinit var albumError: TextView
     private lateinit var typeNote: TextView
+    private lateinit var layoutNote: TextView
     private lateinit var settingsStatus: TextView
     private val choiceButtons = mutableMapOf<String, List<Button>>()
     private val albumExecutor = Executors.newSingleThreadExecutor()
@@ -53,6 +54,7 @@ class MainActivity : Activity() {
     private var intervalPreset = IntervalPreset.default
     private var poolSize = PhotoPoolSize.default
     private var labelMode = PhotoLabelMode.default
+    private var layoutMode = LayoutMode.default
     private var selectedAlbumIds = emptySet<String>()
     private var selectedAlbumPhotoCount = 0
     private var selectedAlbumVideoCount = -1
@@ -245,6 +247,15 @@ class MainActivity : Activity() {
             intervalPreset = it
             refreshSettingsControls()
         } })
+        val layout = addChoiceRow("Layout", "layout", LayoutMode.all.map { mode -> mode.label to {
+            layoutMode = mode
+            refreshSettingsControls()
+        } })
+        layoutNote = text(LAYOUT_NOTE, 12f, false).apply {
+            setTextColor(Color.rgb(170, 184, 199))
+            setPadding(dp(8), 0, 0, 0)
+        }
+        layout.second.addView(layoutNote)
         addChoiceRow("Label", "label", listOf(
             "Location + date" to { labelMode = PhotoLabelMode.LOCATION_AND_DATE; refreshSettingsControls() },
             "None" to { labelMode = PhotoLabelMode.NONE; refreshSettingsControls() },
@@ -261,28 +272,28 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.rgb(23, 35, 47))
-            setPadding(dp(12), dp(4), dp(8), dp(4))
+            setPadding(dp(12), dp(3), dp(8), dp(3))
             val background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.rgb(23, 35, 47)); cornerRadius = dp(8).toFloat()
             }
             this.background = background
         }
         val label = text(title, 16f, true)
-        row.addView(label, LinearLayout.LayoutParams(dp(165), dp(46)))
+        row.addView(label, LinearLayout.LayoutParams(dp(165), dp(38)))
         val optionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val buttons = choices.mapIndexed { index, (caption, action) ->
             button(caption, action).apply {
                 textSize = 13f
-                minHeight = dp(42)
+                minHeight = dp(36)
                 setPadding(dp(5), 0, dp(5), 0)
-                layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply {
                     if (index < choices.lastIndex) marginEnd = dp(7)
                 }
             }.also(optionRow::addView)
         }
         choiceButtons[key] = buttons
         row.addView(optionRow, LinearLayout.LayoutParams(0, -2, 1f))
-        settingsTable.addView(row, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(4) })
+        settingsTable.addView(row, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(3) })
         return row to optionRow
     }
 
@@ -297,6 +308,7 @@ class MainActivity : Activity() {
         mark("type", MediaType.all.indexOf(mediaType).coerceAtLeast(0))
         mark("pool", PhotoPoolSize.all.indexOf(poolSize).coerceAtLeast(0))
         mark("interval", IntervalPreset.all.indexOfFirst { it.seconds == intervalPreset.seconds }.coerceAtLeast(0))
+        mark("layout", LayoutMode.all.indexOf(layoutMode).coerceAtLeast(0))
         mark("label", if (labelMode == PhotoLabelMode.NONE) 1 else 0)
         choiceButtons["pool"].orEmpty().forEach { it.isEnabled = selectionMode == PhotoSelectionMode.ALL }
         albumSummary.text = if (selectionMode == PhotoSelectionMode.ALBUMS) {
@@ -318,6 +330,7 @@ class MainActivity : Activity() {
         mediaType = preferences.mediaType()
         intervalPreset = IntervalPreset.all.firstOrNull { it.seconds == preferences.intervalSeconds() } ?: IntervalPreset.default
         poolSize = preferences.photoPoolSize()
+        layoutMode = preferences.layoutMode()
         labelMode = preferences.photoLabelMode().let {
             if (it == PhotoLabelMode.DATE_ONLY) PhotoLabelMode.LOCATION_AND_DATE else it
         }
@@ -345,11 +358,12 @@ class MainActivity : Activity() {
             preferences.setMediaType(mediaType)
             preferences.setInterval(intervalPreset)
             preferences.setPhotoPoolSize(poolSize)
+            preferences.setLayoutMode(layoutMode)
             preferences.setPhotoLabelMode(labelMode)
             preferences.saveSmbSourceConfig(draftSmbConfig)
             preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount)
             // A trace for the log (no private values) so an unexpected change in settings can be dated.
-            android.util.Log.i("Settings", "Saved: Type=$mediaType, Media=$selectionMode, source=$sourceMode, ${selectedAlbumIds.size} albums")
+            android.util.Log.i("Settings", "Saved: Type=$mediaType, Layout=$layoutMode, Media=$selectionMode, source=$sourceMode, ${selectedAlbumIds.size} albums")
             settingsStatus.text = "Settings saved."
             true
         }.getOrElse {
@@ -996,6 +1010,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val LAYOUT_NOTE = "Two portrait photos side by side. Landscape photos stay full screen."
         private val SELECTED_COLOR = Color.rgb(48, 104, 155)
         private val BUTTON_COLOR = Color.rgb(42, 52, 64)
     }

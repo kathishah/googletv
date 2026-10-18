@@ -1,8 +1,10 @@
 package com.googletv.screensaver.dream
 
 import android.service.dreams.DreamService
+import com.googletv.screensaver.LayoutMode
 import com.googletv.screensaver.SlideshowPreferences
 import com.googletv.screensaver.SlideshowView
+import com.googletv.screensaver.playback.PairingConfig
 import com.googletv.screensaver.playback.PhotoSourceFactory
 import com.googletv.screensaver.playback.SlideshowPlayer
 
@@ -26,6 +28,10 @@ class SlideshowDreamService : DreamService() {
             showEmptyState = slideshowView::showEmptyState,
             showError = slideshowView::showErrorState,
             fallbackSource = PhotoSourceFactory.createFallback(this, SlideshowPreferences(this)),
+            // Layout applies to the screensaver too: its photos are photos only, so pairs always apply.
+            pairing = if (SlideshowPreferences(this).layoutMode() == LayoutMode.PORTRAIT_PAIRS) {
+                PairingConfig(slideshowView::showPair, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+            } else null,
         )
     }
 
