@@ -87,7 +87,7 @@
   <main class="page">
     <header class="page-head">
       <div><div class="eyebrow">Photo Screensaver · design review</div><h1>Media type: photos, videos, or both</h1></div>
-      <p class="review-note">Draft for <code>docs/MEDIA_TYPE.md</code>. Pick a Media choice on screen 1; the album cards on screen 2 follow it.</p>
+      <p class="review-note">Draft for <code>docs/MEDIA_TYPE.md</code>. Pick a Type choice on screen 1; the album cards on screen 2 follow it.</p>
     </header>
     <nav class="tabs" aria-label="Mock screen">
       <button class="tab" aria-selected="true" data-screen="settings">1 · Settings</button>
@@ -100,10 +100,10 @@
         <h2>Slideshow settings</h2>
         <div class="settings-table" role="table" aria-label="Slideshow settings">
           <div class="table-row"><div class="setting-name">Photo source</div><div class="choice-set"><button class="choice">Sample pics</button><button class="choice selected">SMB share</button><button class="choice">SMB settings ›</button></div></div>
-          <div class="table-row"><div class="setting-name">Photos</div><div class="choice-set"><button class="choice selected">All</button><button class="choice">Choose Albums</button></div></div>
-          <div class="table-row new"><div class="setting-name">Media <span class="note">new</span></div><div class="choice-set" id="mediaChoices">
+          <div class="table-row"><div class="setting-name">Media</div><div class="choice-set"><button class="choice selected">All</button><button class="choice">Choose Albums</button></div></div>
+          <div class="table-row new"><div class="setting-name">Type <span class="note">new</span></div><div class="choice-set" id="mediaChoices">
             <button class="choice selected" data-mode="photos">Photos</button>
-            <button class="choice" data-mode="both">Photos + videos</button>
+            <button class="choice" data-mode="both">Photos + Videos</button>
             <button class="choice" data-mode="videos">Videos</button>
             <span class="note" id="mediaNote">Today's behavior.</span></div></div>
           <div class="table-row"><div class="setting-name">Pool</div><div class="choice-set"><button class="choice">100</button><button class="choice selected">250</button><button class="choice">500</button><button class="choice">1,000</button><span class="note" id="poolNote">Only used for All</span></div></div>
@@ -115,7 +115,7 @@
       </article>
 
       <article class="screen" id="picker">
-        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>PHOTO SOURCE · SMB SHARE · MEDIA: <b id="pickerMode">PHOTOS</b></span></div>
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>PHOTO SOURCE · SMB SHARE · TYPE: <b id="pickerMode">PHOTOS</b></span></div>
         <h2>Choose albums</h2>
         <div class="albums" id="albums">
           <div class="album selected focus" data-p="318" data-v="12"><span class="cover c1"></span><span class="badge">▶ video</span><span class="check">✓</span><span class="info"><div class="name">2025-09 Autumn by the lake</div><div class="count"></div></span></div>

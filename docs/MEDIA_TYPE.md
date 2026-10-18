@@ -23,24 +23,25 @@ All measured on this library and the TCL (see the linked sections).
 
 ### Settings
 
-A new **Media** row in the settings table, between **Photos** and **Pool**:
+The settings table changes in two rows:
 
-| Row | Choices |
-| --- | --- |
-| Media | **Photos** (default), Photos + videos, Videos |
+| Row | Choices | Change |
+| --- | --- | --- |
+| Media | **All**, Choose Albums | The existing **Photos** row, renamed. Choices and behavior are unchanged; the stored preference stays `photo_selection_mode`. |
+| Type | **Photos** (default), Photos + Videos, Videos | New row, directly below **Media** and above **Pool**. |
 
-- Persisted as `media_mode` (`PHOTOS`, `PHOTOS_AND_VIDEOS`, `VIDEOS`). A missing or unknown value is `PHOTOS`. It is independent of the saved album IDs and of *All* versus *Choose albums*, like the existing selection mode.
+- **Type** is persisted as `media_type` (`PHOTOS`, `PHOTOS_AND_VIDEOS`, `VIDEOS`). A missing or unknown value is `PHOTOS`. It is independent of the saved album IDs and of the **Media** choice (*All* versus *Choose Albums*), like the existing selection mode.
 - Choosing a mode that includes videos needs the catalog (it holds the video list). If no valid catalog exists, the same in-screen loading and refresh flow as album selection opens, with the same actionable error and retry if it fails; the saved mode is not changed until the catalog is ready.
-- **Pool** keeps its meaning (the number of items drawn in *All* mode) and now counts photos and videos together. It stays disabled in *Choose albums* mode.
+- **Pool** keeps its meaning (the number of items drawn when Media is *All*) and now counts photos and videos together. It stays disabled when Media is *Choose Albums*.
 - **Label** applies to videos as far as metadata allows (below).
 - **Interval** applies to photos only. A video stays on screen for its own length (below). The settings screen says so under the Interval row ("Videos play to the end, up to 60 s").
 
 ### Album picker
 
-- Each card shows what the current Media mode would play: *Photos* mode shows "N photos" as today; *Photos + videos* shows "N photos · M videos"; *Videos* shows "M videos". A video badge appears on cards when videos are in scope.
+- Each card shows what the current **Type** would play: Type *Photos* shows "N photos" as today; *Photos + videos* shows "N photos · M videos"; *Videos* shows "M videos". A video badge appears on cards when videos are in scope.
 - An album with nothing eligible in the current mode stays selectable and is marked "No videos" (or "No photos"), consistent with the existing rule that an empty album is explained, not hidden.
-- The bottom rail total reads "N albums · X items" (or "X pictures" in Photos mode, unchanged). Selection saves immediately and survives Media-mode changes.
-- Covers: unchanged for photo albums. In *Videos* mode, or for an album that has only videos, the cover is a poster frame taken from the first readable video (`MediaMetadataRetriever.getFrameAtTime` through the same SMB data source) and cached in the existing persistent thumbnail cache.
+- The bottom rail total reads "N albums · X items" (or "X pictures" with Type *Photos*, unchanged). Selection saves immediately and survives Type changes.
+- Covers: unchanged for photo albums. With Type *Videos*, or for an album that has only videos, the cover is a poster frame taken from the first readable video (`MediaMetadataRetriever.getFrameAtTime` through the same SMB data source) and cached in the existing persistent thumbnail cache.
 
 ### Playback
 
@@ -48,7 +49,7 @@ A new **Media** row in the settings table, between **Photos** and **Pool**:
 - **Look:** letterboxed (never cropped, like photos), black bars, muted, no controls. The view is resized to the clip's displayed size on every size change, so rotated portrait clips are upright and correctly proportioned.
 - **Labels:** photos keep location and date from EXIF. For videos the date and, when present, location come from the container metadata (`MediaMetadataRetriever`). If a clip has neither, no label. To be verified on the TV (open question below).
 - **Transitions:** none. The previous slide stays up until the next one is ready (first video frame rendered, or photo decoded), then it switches.
-- **Order:** one shuffled sequence. In *All* mode with videos included, the pool is drawn so videos appear in proportion to their share of the library (about 9%); *Videos* mode is all videos. In album mode all eligible items from the selected albums are shuffled together, as today.
+- **Order:** one shuffled sequence. With Media *All* and videos included, the pool is drawn so videos appear in proportion to their share of the library (about 9%); Type *Videos* is all videos. With Media *Choose Albums*, all eligible items from the selected albums are shuffled together, as today.
 
 ### States and errors
 
@@ -64,7 +65,7 @@ A new **Media** row in the settings table, between **Photos** and **Pool**:
 `PhotosAlbumCatalog.VERSION` becomes 2, so existing catalogs are rebuilt on the next refresh (an old catalog never survives the unchanged shortcut). Changes:
 
 - Each album: `photoCount`, `videoCount`, and `items`, objects `{p: relative path, k: 0 photo | 1 video, d: duration seconds (video), s: size bytes (video)}` replacing the plain `paths` list.
-- Top-level `videos`: every active, non-hidden video in the library as the same item objects, so *All* mode can include videos without the album tables.
+- Top-level `videos`: every active, non-hidden video in the library as the same item objects, so Media *All* can include videos without the album tables.
 - The query reads `ZKIND` 0 and 1, joins `ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE` and `ZASSET.ZDURATION`, and keeps video extensions from an allowlist: mov, mp4, m4v, 3gp, 3g2, avi, mpg, mpeg, mts, m2ts. Live Photo motion clips are not separate asset rows, so they do not appear as videos. Trashed and hidden assets are excluded. Rows missing a duration or size are dropped.
 - Size estimate: about +0.25 MB for 3,300 videos on top of 1.66 MB. Read time stays dominated by JSON parsing (about 0.8–2 s measured today).
 - `sourceModifiedAt`, the unchanged shortcut, and incremental sync are unaffected.
@@ -100,11 +101,11 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 | # | Milestone | Main work | Exit check |
 | --- | --- | --- | --- |
 | 1 | Catalog v2 and counts | Query and JSON v2 (`items`, `videos`, counts, bump `VERSION`); keep the unchanged shortcut safe against v1 files; JVM tests for read/write, v1 rejection, path safety | Refresh builds v2 on the TV; photo counts match v1; video counts match the survey within the snapshot lag; cached read stays under 3 s |
-| 2 | Settings and picker | `media_mode` preference, Media row, summary text, card counts and badges per mode, empty-state rules; slide model gains a kind and the video fields; photos-only path unchanged | All settings and picker states in the mock work with the D-pad; Photos mode is pixel-for-pixel today's behavior |
+| 2 | Settings and picker | `media_type` preference, Type row (and the Photos row renamed Media), summary text, card counts and badges per mode, empty-state rules; slide model gains a kind and the video fields; photos-only path unchanged | All settings and picker states in the mock work with the D-pad; Photos mode is pixel-for-pixel today's behavior |
 | 3 | Progressive data source | `ProgressiveSmbDataSource`, gate math, cache cleanup; JVM tests with an in-memory share (tail-first, ordering, gate maths, abandonment, cleanup) | On the TV: typical clip starts in under 3 s with no stall; 4K HLG and the 89 Mbps clip start within 5 s of the model and finish with at most one pause; temp files gone afterwards |
 | 4 | Playback in the preview | Video surface in `SlideshowView` sized to the clip, `MediaPlayer` lifecycle, errors and skip rules, labels from container metadata | Portrait, landscape, rotated and HDR clips upright and correctly proportioned (user check); 20 consecutive clips with stable memory; failure and skip paths exercised |
 | 5 | DreamService | Same player in the dream, stop/start lifecycle, mixed sequences, fallback after three failures | Idle activation with a mixed library; 1-hour soak with no leak and an empty temp cache; behavior while Guest is denied |
-| 6 | Videos mode and covers | *Videos* mode, *All* with proportional videos, poster-frame covers | Each mode in preview and dream; covers cached and persistent |
+| 6 | Videos type and covers | Type *Videos*, Media *All* with proportional videos, poster-frame covers | Each Type in preview and dream; covers cached and persistent |
 | 7 | Hardening | Recorded logs per clip (phase timings, no names), docs, optional extras below | Docs and roadmap updated; open questions closed or recorded |
 
 Optional later: fetching the next clip's head during playback of a light clip, a rolling cache window for the few clips over the free-space limit, an audio toggle, HDR tuning.
@@ -115,7 +116,7 @@ Recommended defaults are used above.
 
 1. **Cap of 60 s per clip** (alternative: the Interval setting, or a user choice).
 2. **Videos always muted** in v1.
-3. **Proportional mix** of videos in *All* mode (about 9%), not a user-set share.
+3. **Proportional mix** of videos when Media is *All* (about 9%), not a user-set share.
 4. **Skip only clips that would need a start wait over 60 s** (3 clips on the conservative link), not a fixed bitrate cut.
 5. **Free-space guard of 6 GiB** and a per-clip temp file (up to about 4 GB) in the app cache.
 
