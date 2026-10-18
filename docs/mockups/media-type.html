@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Media type · design mock</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101821; --panel: #17232f; --panel-2: #202d3a; --blue: #30689b; --blue-bright: #62a8e8;
+      --muted: #aab8c7; --soft: #718194; --white: #f5f8fb; --line: #344454;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 28px; display: flex; justify-content: center; align-items: center;
+      background: #0b1118; color: var(--white); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .page { width: min(1160px, 100%); }
+    .page-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
+    .eyebrow { color: var(--blue-bright); text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 750; }
+    h1 { font-size: 23px; margin: 4px 0 0; font-weight: 650; }
+    .review-note { color: var(--muted); font-size: 13px; max-width: 460px; text-align: right; margin: 0; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .tab { appearance: none; border: 1px solid var(--line); background: #141e28; color: var(--muted); padding: 9px 14px; border-radius: 8px; font: inherit; cursor: pointer; }
+    .tab[aria-selected="true"] { color: white; border-color: var(--blue-bright); background: #183650; }
+    .tv { aspect-ratio: 16 / 9; width: 100%; overflow: hidden; position: relative; border: 1px solid #455668; border-radius: 13px;
+      background: radial-gradient(ellipse at 70% 18%, #1b2b3b 0%, var(--bg) 56%); box-shadow: 0 20px 70px #0009, inset 0 0 0 7px #05090d;
+      padding: clamp(18px, 3.1vw, 42px) clamp(26px, 4.5vw, 64px); }
+    .screen { height: 100%; display: none; flex-direction: column; }
+    .screen.active { display: flex; }
+    .topline { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: clamp(10px, 1.08vw, 13px); letter-spacing: .04em; }
+    .brand { display: flex; align-items: center; gap: 10px; color: white; font-weight: 650; letter-spacing: 0; }
+    .brand-mark { width: 23px; height: 23px; border-radius: 7px; background: var(--blue); display: grid; place-items: center; font-size: 12px; }
+    h2 { font-size: clamp(20px, 2.5vw, 30px); line-height: 1.1; margin: clamp(10px, 1.6vw, 20px) 0 10px; font-weight: 650; letter-spacing: -.025em; }
+    .settings-table { display: grid; gap: 6px; }
+    .table-row { display: grid; grid-template-columns: minmax(126px, 17%) minmax(0, 1fr); align-items: center; min-height: 53px; border: 1px solid var(--line); border-radius: 8px; background: #17232fd9; }
+    .table-row.new { border-color: #4d8ec4; box-shadow: 0 0 0 1px #30689b88; }
+    .setting-name { padding: 8px 12px; font-size: clamp(12px, 1.25vw, 15px); font-weight: 620; }
+    .choice-set { display: flex; align-items: center; gap: 6px; padding: 5px 8px; flex-wrap: wrap; }
+    .choice { appearance: none; min-height: 34px; padding: 5px 10px; border: 1px solid #425568; border-radius: 7px; background: #202d3a; color: #dce8f1; font: inherit; font-size: clamp(10px, 1vw, 12px); white-space: nowrap; cursor: pointer; }
+    .choice.selected { border: 2px solid #e5f3ff; padding: 4px 9px; background: #1b4262; color: white; box-shadow: 0 0 0 2px #30689b55; }
+    .choice:disabled { opacity: .38; cursor: default; }
+    .note { color: var(--muted); font-size: clamp(9px, .95vw, 11.5px); }
+    .spacer { flex: 1; }
+    .footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; color: var(--muted); font-size: clamp(10px, 1.08vw, 13px); }
+    .action { color: white; border: 1px solid #526477; border-radius: 8px; background: #2a3440; padding: 6px 15px; font: inherit; font-size: clamp(10px, 1vw, 12px); min-width: 75px; }
+    .action.primary { border-color: #4d8ec4; background: var(--blue); font-weight: 650; }
+    .albums { display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(6px, .8vw, 10px); }
+    .album { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 9px; background: #17232f; overflow: hidden; }
+    .album.focus { border: 2px solid #e5f3ff; box-shadow: 0 0 0 3px #30689b66; }
+    .album.dim { opacity: .55; }
+    .cover { position: absolute; inset: 0; }
+    .c1 { background: linear-gradient(135deg, #4e5140, #d18a57 56%, #dfc28c); }
+    .c2 { background: linear-gradient(135deg, #242e48, #d37c61 58%, #e7bf82); }
+    .c3 { background: linear-gradient(135deg, #5e7b8e, #d5d9d1 55%, #8da7ad); }
+    .c4 { background: linear-gradient(135deg, #267580, #78c1bd 48%, #e2b57d); }
+    .c5 { background: linear-gradient(135deg, #577765, #b9b67f 53%, #d18c72); }
+    .c6 { background: linear-gradient(135deg, #354b71, #8b83b5 55%, #d7a080); }
+    .c7 { background: linear-gradient(135deg, #263d47, #7294a0 48%, #ad8b65); }
+    .c8 { background: linear-gradient(135deg, #5f495e, #db9b70 58%, #efc882); }
+    .info { position: absolute; inset: auto 0 0; padding: 26px 10px 9px; background: linear-gradient(180deg, transparent, #08111bd9 44%, #08111bf2); }
+    .name { font-size: clamp(9px, .95vw, 12px); font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .count { color: #d1dbe4; font-size: clamp(8px, .85vw, 10.5px); }
+    .count .none { color: #f0c987; }
+    .check { position: absolute; top: 7px; right: 7px; width: 21px; height: 21px; border-radius: 6px; border: 1.5px solid #e3edf5; background: #12202ba8; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+    .selected .check { border-color: var(--blue-bright); background: var(--blue); }
+    .badge { position: absolute; top: 7px; left: 7px; padding: 2px 7px; border-radius: 999px; background: #0b141dcc; border: 1px solid #8395a6; font-size: clamp(8px, .8vw, 10px); display: none; }
+    .with-videos .badge { display: block; }
+    .rail { border-top: 1px solid #344454; margin-top: 9px; padding-top: 9px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .stage { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(8px, 1vw, 14px); }
+    .state { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .state-label { font-size: clamp(10px, 1.05vw, 13px); color: var(--muted); }
+    .state-label b { color: white; }
+    .frame { position: relative; flex: 1; min-height: 0; background: #000; border: 1px solid #3a4b5c; border-radius: 8px; overflow: hidden; display: grid; place-items: center; }
+    .video { position: relative; height: 100%; aspect-ratio: 9 / 16; background: linear-gradient(160deg, #35506a, #c18a5e 60%, #e1c58e); }
+    .video.land { height: auto; width: 100%; aspect-ratio: 16 / 9; }
+    .video::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px; color: #ffffffaa; }
+    .caption { position: absolute; left: 10px; bottom: 8px; font-size: clamp(8px, .9vw, 11px); color: #ffffffdd; text-shadow: 0 1px 3px #000; }
+    .prev-photo { position: absolute; inset: 0; background: linear-gradient(135deg, #5e7b8e, #d5d9d1 55%, #8da7ad); }
+    .overlay-chip { position: absolute; right: 8px; top: 8px; padding: 3px 8px; border-radius: 999px; background: #0b141dd9; border: 1px solid #8395a6; font-size: clamp(8px, .85vw, 10.5px); }
+    .bars { position: absolute; inset: 0; pointer-events: none; }
+    .bars::before, .bars::after { content: ""; position: absolute; top: 0; bottom: 0; width: 0; }
+    .legend { color: var(--muted); font-size: clamp(9px, .95vw, 11.5px); margin: 6px 0 0; }
+    .review-items { margin-top: 12px; color: var(--muted); font-size: 12px; display: grid; gap: 3px; }
+    @media (max-width: 760px) { body { padding: 16px; align-items: flex-start; } .page-head { flex-direction: column; align-items: flex-start; } .review-note { text-align: left; } .tv { padding: 22px; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="page-head">
+      <div><div class="eyebrow">Photo Screensaver · design review</div><h1>Media type: photos, videos, or both</h1></div>
+      <p class="review-note">Draft for <code>docs/MEDIA_TYPE.md</code>. Pick a Media choice on screen 1; the album cards on screen 2 follow it.</p>
+    </header>
+    <nav class="tabs" aria-label="Mock screen">
+      <button class="tab" aria-selected="true" data-screen="settings">1 · Settings</button>
+      <button class="tab" aria-selected="false" data-screen="picker">2 · Choose albums</button>
+      <button class="tab" aria-selected="false" data-screen="playback">3 · Playback states</button>
+    </nav>
+    <section class="tv" aria-label="Television screen mockup">
+      <article class="screen active" id="settings">
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SETTINGS</span></div>
+        <h2>Slideshow settings</h2>
+        <div class="settings-table" role="table" aria-label="Slideshow settings">
+          <div class="table-row"><div class="setting-name">Photo source</div><div class="choice-set"><button class="choice">Sample pics</button><button class="choice selected">SMB share</button><button class="choice">SMB settings ›</button></div></div>
+          <div class="table-row"><div class="setting-name">Photos</div><div class="choice-set"><button class="choice selected">All</button><button class="choice">Choose Albums</button></div></div>
+          <div class="table-row new"><div class="setting-name">Media <span class="note">new</span></div><div class="choice-set" id="mediaChoices">
+            <button class="choice selected" data-mode="photos">Photos</button>
+            <button class="choice" data-mode="both">Photos + videos</button>
+            <button class="choice" data-mode="videos">Videos</button>
+            <span class="note" id="mediaNote">Today's behavior.</span></div></div>
+          <div class="table-row"><div class="setting-name">Pool</div><div class="choice-set"><button class="choice">100</button><button class="choice selected">250</button><button class="choice">500</button><button class="choice">1,000</button><span class="note" id="poolNote">Only used for All</span></div></div>
+          <div class="table-row"><div class="setting-name">Interval</div><div class="choice-set"><button class="choice">10 secs</button><button class="choice selected">30 secs</button><button class="choice">1 min</button><button class="choice">5 min</button><button class="choice">15 min</button><span class="note" id="intervalNote">Photos stay this long.</span></div></div>
+          <div class="table-row"><div class="setting-name">Label</div><div class="choice-set"><button class="choice selected">Location + date</button><button class="choice">None</button><span class="note" id="labelNote"></span></div></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="footer"><span class="note" id="settingsStatus">Changes take effect when saved.</span><span><button class="action primary">Save</button> <button class="action">Cancel</button></span></div>
+      </article>
+
+      <article class="screen" id="picker">
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>PHOTO SOURCE · SMB SHARE · MEDIA: <b id="pickerMode">PHOTOS</b></span></div>
+        <h2>Choose albums</h2>
+        <div class="albums" id="albums">
+          <div class="album selected focus" data-p="318" data-v="12"><span class="cover c1"></span><span class="badge">▶ video</span><span class="check">✓</span><span class="info"><div class="name">2025-09 Autumn by the lake</div><div class="count"></div></span></div>
+          <div class="album selected" data-p="128" data-v="0"><span class="cover c2"></span><span class="badge">▶ video</span><span class="check">✓</span><span class="info"><div class="name">2025-06 City nights</div><div class="count"></div></span></div>
+          <div class="album" data-p="82" data-v="9"><span class="cover c3"></span><span class="badge">▶ video</span><span class="check"></span><span class="info"><div class="name">2025-02 Winter hike</div><div class="count"></div></span></div>
+          <div class="album" data-p="0" data-v="21"><span class="cover c6"></span><span class="badge">▶ video</span><span class="check"></span><span class="info"><div class="name">2024-12 Winter holidays</div><div class="count"></div></span></div>
+          <div class="album" data-p="146" data-v="4"><span class="cover c5"></span><span class="badge">▶ video</span><span class="check"></span><span class="info"><div class="name">2024-09 Garden</div><div class="count"></div></span></div>
+          <div class="album selected" data-p="524" data-v="38"><span class="cover c4"></span><span class="badge">▶ video</span><span class="check">✓</span><span class="info"><div class="name">2024-07 Coast trip</div><div class="count"></div></span></div>
+          <div class="album" data-p="63" data-v="0"><span class="cover c8"></span><span class="badge">▶ video</span><span class="check"></span><span class="info"><div class="name">2024-01 City weekend</div><div class="count"></div></span></div>
+          <div class="album" data-p="207" data-v="15"><span class="cover c7"></span><span class="badge">▶ video</span><span class="check"></span><span class="info"><div class="name">2023-08 Yosemite</div><div class="count"></div></span></div>
+        </div>
+        <div class="rail"><span class="note" id="railSummary"></span><span><button class="action">Refresh</button> <button class="action primary">Done</button></span></div>
+      </article>
+
+      <article class="screen" id="playback">
+        <div class="topline"><div class="brand"><span class="brand-mark">P</span>Photo Screensaver</div><span>SCREENSAVER · VIDEO STATES</span></div>
+        <h2>How a video appears</h2>
+        <div class="stage">
+          <div class="state">
+            <div class="state-label"><b>A · Portrait clip.</b> Letterboxed, upright, no crop. Muted. Plays to its end (up to 60 s).</div>
+            <div class="frame"><div class="video"></div><div class="caption">Yosemite · Aug 2023</div></div>
+          </div>
+          <div class="state">
+            <div class="state-label"><b>B · Waiting to start.</b> The previous photo stays up while the reader gets ahead (usually under 5 s, never over 60 s).</div>
+            <div class="frame"><div class="prev-photo"></div><span class="overlay-chip" title="Mock only: not shown on the real screen">mock note: buffering, photo still shown</span><div class="caption">Winter hike · Feb 2025</div></div>
+          </div>
+          <div class="state">
+            <div class="state-label"><b>C · Landscape clip.</b> Fills the width with bars top and bottom, like a photo.</div>
+            <div class="frame"><div class="video land"></div><div class="caption">Coast trip · Jul 2024</div></div>
+          </div>
+        </div>
+        <p class="legend">No on-screen controls or progress in v1. A clip that fails to open, has no decoder, or stalls for more than 10 s is skipped at once; three failures in a row show the stored artwork.</p>
+        <div class="review-items">
+          <span>• Photos keep the Interval; a video plays to its end, capped at 60 s.</span>
+          <span>• Clips needing more than 60 s of start wait are skipped for that pass (3 clips on the conservative link).</span>
+        </div>
+      </article>
+    </section>
+  </main>
+  <script>
+    const modes = {
+      photos: { note: "Today's behavior.", pool: "Only used for All", interval: "Photos stay this long.", label: "", status: "Photos only", count: (p, v) => ({ text: p + " photos", none: p === 0 && "No photos" }) },
+      both: { note: "Videos play to the end, up to 60 s.", pool: "Counts photos and videos. Only used for All", interval: "Photos stay this long; videos play to the end.", label: "Videos use date and place from the clip when present.", status: "Photos + videos", count: (p, v) => ({ text: p + " photos · " + v + " videos" }) },
+      videos: { note: "Videos only.", pool: "Counts videos. Only used for All", interval: "Not used: each video plays to the end.", label: "Videos use date and place from the clip when present.", status: "Videos", count: (p, v) => ({ text: v + " videos", none: v === 0 && "No videos" }) },
+    };
+    function setMode(key) {
+      const m = modes[key];
+      document.querySelectorAll('#mediaChoices .choice').forEach(b => b.classList.toggle('selected', b.dataset.mode === key));
+      document.getElementById('mediaNote').textContent = m.note;
+      document.getElementById('poolNote').textContent = m.pool;
+      document.getElementById('intervalNote').textContent = m.interval;
+      document.getElementById('labelNote').textContent = m.label;
+      document.getElementById('pickerMode').textContent = m.status.toUpperCase();
+      document.getElementById('settingsStatus').textContent = 'Changes take effect when saved.';
+      const albums = document.getElementById('albums');
+      albums.classList.toggle('with-videos', key !== 'photos');
+      let items = 0, picked = 0;
+      albums.querySelectorAll('.album').forEach(a => {
+        const p = +a.dataset.p, v = +a.dataset.v;
+        const c = m.count(p, v);
+        const none = c.none;
+        a.querySelector('.count').innerHTML = none ? '<span class="none">' + none + '</span>' : c.text;
+        a.classList.toggle('dim', !!none);
+        if (a.classList.contains('selected')) { picked++; items += key === 'photos' ? p : key === 'both' ? p + v : v; }
+      });
+      const unit = key === 'photos' ? 'pictures' : 'items';
+      document.getElementById('railSummary').textContent = picked + ' albums · ' + items.toLocaleString() + ' ' + unit + ' · saved automatically';
+    }
+    document.querySelectorAll('#mediaChoices .choice').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t));
+      document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === t.dataset.screen));
+    }));
+    setMode('photos');
+  </script>
+</body>
+</html>
