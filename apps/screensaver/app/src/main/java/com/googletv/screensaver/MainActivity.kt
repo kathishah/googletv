@@ -342,6 +342,8 @@ class MainActivity : Activity() {
             preferences.setPhotoLabelMode(labelMode)
             preferences.saveSmbSourceConfig(draftSmbConfig)
             preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount)
+            // A trace for the log (no private values) so an unexpected change in settings can be dated.
+            android.util.Log.i("Settings", "Saved: Type=$mediaType, Media=$selectionMode, source=$sourceMode, ${selectedAlbumIds.size} albums")
             settingsStatus.text = "Settings saved."
             true
         }.getOrElse {

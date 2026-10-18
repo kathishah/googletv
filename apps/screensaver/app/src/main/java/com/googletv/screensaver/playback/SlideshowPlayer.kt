@@ -304,7 +304,9 @@ class SlideshowPlayer(
                     onSuccess = { video -> beginVideo(slide, video, stage, runGeneration) },
                     onFailure = { error ->
                         val skipped = error as? VideoSkippedException
-                        val permanent = skipped == null && error.smbFailureKind() == SmbFailureKind.PER_FILE
+                        // Low storage says nothing about the clip, so it stays in the pool for a later try.
+                        val permanent = skipped == null && error !is InsufficientStorageException &&
+                            error.smbFailureKind() == SmbFailureKind.PER_FILE
                         val detail = skipped?.message ?: "${error.safeCauseChain()}, ${error.safeSmbStatus()}"
                         handleVideoFailure(slides.indexOf(slide), slide, permanent, detail, runGeneration)
                     },

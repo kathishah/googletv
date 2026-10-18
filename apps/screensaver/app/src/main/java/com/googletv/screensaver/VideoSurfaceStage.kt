@@ -51,7 +51,9 @@ class VideoSurfaceStage(private val view: SlideshowView) : VideoStage {
         fun start() {
             if (!view.videoSurface.holder.surface.isValid) {
                 // The surface appears a frame or two after the view is attached.
-                if (++surfaceTries > 20) return finish(failure = VideoFailure.UNPLAYABLE)
+                // A surface that never appears (for example the activity is in the background) says nothing
+                // about the clip, so it is retried later instead of being dropped from the pool.
+                if (++surfaceTries > 20) return finish(failure = VideoFailure.STALLED)
                 handler.postDelayed(startRetry, 100)
                 return
             }

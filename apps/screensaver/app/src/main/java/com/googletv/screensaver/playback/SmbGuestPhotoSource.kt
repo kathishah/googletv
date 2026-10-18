@@ -299,6 +299,17 @@ class SmbGuestPhotoSource(
     }
 
     private fun loadSelectedAlbumSlides(): List<Slide> {
+        val startedAt = SystemClock.elapsedRealtime()
+        val slides = loadSelectedAlbumSlidesUntimed()
+        Log.i(
+            LOG_TAG,
+            "Album slides ready: ${slides.count { it.kind == SlideKind.PHOTO }} photos, " +
+                "${slides.count { it.kind == SlideKind.VIDEO }} videos in ${SystemClock.elapsedRealtime() - startedAt} ms",
+        )
+        return slides
+    }
+
+    private fun loadSelectedAlbumSlidesUntimed(): List<Slide> {
         if (selectedAlbumIds.isEmpty()) {
             throw AlbumIndexException("No albums are selected. Choose at least one album or switch to All photos.")
         }
@@ -311,23 +322,17 @@ class SmbGuestPhotoSource(
             throw AlbumIndexException("One or more selected albums currently have no readable supported photos. Refresh the Mac index or remove that album in Choose albums.")
         }
         val paths = linkedSetOf<String>()
-        if (mediaType.includesPhotos) selectedAlbumIds.forEach { id ->
-            byId.getValue(id).paths.forEach pathLoop@{ relative ->
-                if (!isSafeAlbumPath(relative)) return@pathLoop
-                val smbPath = "$rootPath\\${relative.replace('/', '\\')}"
-                val readable = runCatching { withDiskShare { share ->
-                    val file = share.openFile(smbPath, EnumSet.of(AccessMask.GENERIC_READ),
-                        EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL), SMB2ShareAccess.ALL,
-                        SMB2CreateDisposition.FILE_OPEN, EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))
-                    file.close(); true
-                } }.fold(
-                    onSuccess = { it },
-                    onFailure = { error ->
-                        if (error.smbFailureKind() == SmbFailureKind.PER_FILE) false else throw error
-                    },
-                )
-                if (readable) paths += smbPath
+        if (mediaType.includesPhotos) {
+            selectedAlbumIds.forEach { id ->
+                byId.getValue(id).paths.forEach { relative ->
+                    if (isSafeAlbumPath(relative)) paths += "$rootPath\\${relative.replace('/', '\\')}"
+                }
             }
+            // Opening every photo to check it first took about 21 s for 950 photos at every start. A small
+            // sample is enough to catch a share or folder that cannot be read at all; a single unreadable
+            // photo is skipped when its turn comes, as it always has been.
+            val sample = paths.toList().shuffled().take(READABLE_SAMPLE)
+            if (sample.isNotEmpty() && sample.none(::isReadable)) paths.clear()
         }
         if (mediaType == MediaType.PHOTOS) {
             if (paths.isEmpty()) throw AlbumIndexException("The selected albums have no readable supported photos. Refresh the Mac index or choose another album.")
@@ -391,6 +396,20 @@ class SmbGuestPhotoSource(
             runCatching { retriever.release() }
         }
     }
+
+    /** True if the file opens for reading; a per-file error means no, any other error (a dropped connection) is thrown. */
+    private fun isReadable(smbPath: String): Boolean = runCatching {
+        withDiskShare { share ->
+            val file = share.openFile(smbPath, EnumSet.of(AccessMask.GENERIC_READ),
+                EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL), SMB2ShareAccess.ALL,
+                SMB2CreateDisposition.FILE_OPEN, EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))
+            file.close()
+            true
+        }
+    }.fold(
+        onSuccess = { it },
+        onFailure = { error -> if (error.smbFailureKind() == SmbFailureKind.PER_FILE) false else throw error },
+    )
 
     private fun isSafeAlbumPath(path: String): Boolean {
         val parts = path.replace('\\', '/').split('/')
@@ -581,6 +600,7 @@ class SmbGuestPhotoSource(
         const val DEFAULT_POOL_SIZE = 250
         const val ALBUM_CATALOG_FILE = "photos-album-catalog-v1.json"
         private const val LOG_TAG = "PhotoSource"
+        private const val READABLE_SAMPLE = 8
         private const val SMB_PORT = 445
         private const val SMB_TIMEOUT_SECONDS = 15L
         private const val MAX_METADATA_BYTES = 512 * 1024
