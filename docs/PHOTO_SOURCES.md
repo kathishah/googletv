@@ -137,6 +137,7 @@ Input for the media-type feature ([roadmap item 9](ROADMAP.md)). Counts come fro
 - **Resolution (long edge):** 2,104 are 1080p-class (1920×1080 is the most common size), 907 are 720p-class, 336 are smaller, and 7 are 4K or larger.
 - **Duration:** median 31.6 s, 90th percentile 110 s, 99th percentile 500 s, longest 2,994 s; 52.6 hours in total. 1,590 are under 30 s, 2,543 are 60 s or shorter, and 27 are over 10 minutes.
 - **Flags:** 632 are marked HDR (type 5); in the sample these were HLG with Dolby Vision metadata. 653 carry subtype codes 100–103 (not mapped to Photos' names; the sample included 120 and 240 fps clips).
+- **Not usable as catalog videos:** 65 of the 3,354 active videos are stored outside `originals` (an absolute directory) and 35 have no recorded file size, so the catalog (v2) lists 3,258 videos from a newer database state (see [media type](MEDIA_TYPE.md#catalog-v2)).
 - **Sample formats:** H.264 14, HEVC 8 (4 Main 10 HLG with Dolby Vision), Motion JPEG 4, MPEG-4 Part 2 2. Audio: AAC 20 (one HE-AAC), PCM 4, AMR-NB 1, none 3. Frame rates from 14 to 240 fps; 6 clips carry rotation metadata (portrait). Video bitrate ranged from 0.43 to 70.8 Mbps with a median of 7.7 Mbps.
 
 ### Video permissions (2026-10-17)

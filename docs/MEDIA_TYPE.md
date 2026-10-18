@@ -75,11 +75,14 @@ The settings table changes in two rows:
 
 `PhotosAlbumCatalog.VERSION` becomes 2, so existing catalogs are rebuilt on the next refresh (an old catalog never survives the unchanged shortcut). Changes:
 
-- Each album: `photoCount`, `videoCount`, and `items`, objects `{p: relative path, k: 0 photo | 1 video, d: duration seconds (video), s: size bytes (video)}` replacing the plain `paths` list.
-- Top-level `videos`: every active, non-hidden video in the library as the same item objects, so Media *All* can include videos without the album tables.
-- The query reads `ZKIND` 0 and 1, joins `ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE` and `ZASSET.ZDURATION`, and keeps video extensions from an allowlist: mov, mp4, m4v, 3gp, 3g2, avi, mpg, mpeg, mts, m2ts. Live Photo motion clips are not separate asset rows, so they do not appear as videos. Trashed and hidden assets are excluded. Rows missing a duration or size are dropped.
-- Size estimate: about +0.25 MB for 3,300 videos on top of 1.66 MB. Read time stays dominated by JSON parsing (about 0.8–2 s measured today).
-- `sourceModifiedAt`, the unchanged shortcut, and incremental sync are unaffected.
+**Implemented (milestone 1, 2026-10-17).** The layout is leaner than first drafted:
+
+- Each album keeps `paths` (its photos, exactly as in v1) and adds `photoCount`, `videoCount`, and `videos`, a list of `{p: relative path, d: duration seconds, s: size bytes}`.
+- Top level adds `videos`: every active, non-hidden video in the library in the same shape, so Media *All* can include videos without the album tables.
+- Two queries. The library query reads `ZASSET` rows with `ZKIND=1`, not trashed and not hidden, joined to `ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE` (about 3,400 lookups). The album query is the v1 query unchanged. An album's videos are resolved against the library list when the catalog is built, so the album query never needs duration or size. Joining the attributes table on every membership row (38,000) was tried first and made the rebuild 79 s instead of 51 s.
+- A video needs `ZKIND=1`, an extension in the allowlist (mov, mp4, m4v, 3gp, 3g2, avi, mpg, mpeg, mts, m2ts), a safe path relative to `originals`, and a positive duration and size. Live Photo motion clips are not separate asset rows, so they do not appear.
+- Videos that are dropped: on this library, 65 are stored outside `originals` (their directory is an absolute path, the same case as the 1,116 out-of-folder photo references) and 35 have no recorded file size.
+- The file is 2.25 MB (v1 was 1.66 MB), a catalog read takes about 0.9 s in the picker and 2.3 s during a refresh, and `sourceModifiedAt`, the unchanged shortcut, and incremental sync are unchanged. A v1 file is rejected and rebuilt on the next picker open or refresh.
 
 ### Counts and the bitrate rule
 
@@ -111,7 +114,7 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 
 | # | Milestone | Main work | Exit check |
 | --- | --- | --- | --- |
-| 1 | Catalog v2 and counts | Query and JSON v2 (`items`, `videos`, counts, bump `VERSION`); keep the unchanged shortcut safe against v1 files; JVM tests for read/write, v1 rejection, path safety | Refresh builds v2 on the TV; photo counts match v1; video counts match the survey within the snapshot lag; cached read stays under 3 s |
+| 1 | Catalog v2 and counts (**done 2026-10-17**) | Query and JSON v2 (`videos`, counts, bump `VERSION`); keep the unchanged shortcut safe against v1 files; JVM tests for read/write, v1 rejection, path safety | Refresh builds v2 on the TV; photo counts match v1; video counts match the survey within the snapshot lag; cached read stays under 3 s. **Met:** see [device testing](DEVICE_TESTING.md#catalog-v2-milestone-1-2026-10-17) |
 | 2 | Settings and picker | `media_type` preference, Type row (and the Photos row renamed Media), summary text, card counts and badges per mode, empty-state rules; slide model gains a kind and the video fields; photos-only path unchanged | All settings and picker states in the mock work with the D-pad; Photos mode is pixel-for-pixel today's behavior |
 | 3 | Progressive data source | `ProgressiveSmbDataSource`, gate math, cache cleanup; JVM tests with an in-memory share (tail-first, ordering, gate maths, abandonment, cleanup) | On the TV: typical clip starts in under 3 s with no stall; 4K HLG and the 89 Mbps clip start within 5 s of the model and finish with at most one pause; temp files gone afterwards |
 | 4 | Playback in the preview | Video surface in `SlideshowView` sized to the clip, `MediaPlayer` lifecycle, errors and skip rules, labels from container metadata | Portrait, landscape, rotated and HDR clips upright and correctly proportioned (user check); 20 consecutive clips with stable memory; failure and skip paths exercised |

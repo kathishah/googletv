@@ -63,4 +63,6 @@ dependencies {
     implementation("com.hierynomus:smbj:0.15.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Real org.json for JVM tests; android.jar only has stubs that throw "not mocked".
+    testImplementation("org.json:json:20250517")
 }

@@ -33,12 +33,31 @@ data class SmbSourceConfig(
     val rootPath: String,
 )
 
-data class AlbumEntry(val id: String, val title: String, val yearMonth: String?, val paths: List<String>)
+/** A video known to the catalog; [path] is relative to the library's `originals` folder. */
+data class VideoItem(val path: String, val durationSeconds: Double, val sizeBytes: Long) {
+    /** Average bitrate in megabits per second, from file size and duration. */
+    val bitrateMbps: Double get() = sizeBytes * 8.0 / durationSeconds / 1_000_000.0
+}
+
+/** [paths] are the album's photos (as in catalog v1); [videos] are its videos. */
+data class AlbumEntry(
+    val id: String,
+    val title: String,
+    val yearMonth: String?,
+    val paths: List<String>,
+    val videos: List<VideoItem> = emptyList(),
+) {
+    val photoCount: Int get() = paths.size
+    val videoCount: Int get() = videos.size
+}
+
 data class AlbumIndex(
     val albums: List<AlbumEntry>,
     val createdAtMillis: Long = System.currentTimeMillis(),
     /** Newest modification time of the Photos database files the catalog was built from. */
     val sourceModifiedMillis: Long? = null,
+    /** Every active, non-hidden video in the library, whether or not it is in an album. */
+    val videos: List<VideoItem> = emptyList(),
 )
 data class AlbumCatalogProgress(val message: String, val bytesCopied: Long? = null, val totalBytes: Long? = null)
 class AlbumIndexException(message: String) : IllegalStateException(message)
@@ -142,7 +161,7 @@ class SmbGuestPhotoSource(
                 Log.i(
                     LOG_TAG,
                     "Album catalog read from this TV: ${index.albums.size} albums, " +
-                        "${index.albums.sumOf { it.paths.size }} paths, ${cacheFile.length()} bytes in " +
+                        "${index.albums.sumOf { it.paths.size }} paths, ${index.videos.size} library videos, ${cacheFile.length()} bytes in " +
                         "${SystemClock.elapsedRealtime() - readStartedAt} ms",
                 )
                 return index
