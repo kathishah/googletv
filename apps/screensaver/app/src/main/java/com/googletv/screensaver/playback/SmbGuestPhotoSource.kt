@@ -363,11 +363,7 @@ class SmbGuestPhotoSource(
                 }
             }
             Log.i(LOG_TAG, "Album photos: ${paths.size} kept, $excludedCount excluded (list of ${exclusion.size})")
-            // Opening every photo to check it first took about 21 s for 950 photos at every start. A small
-            // sample is enough to catch a share or folder that cannot be read at all; a single unreadable
-            // photo is skipped when its turn comes, as it always has been.
-            val sample = paths.toList().shuffled().take(READABLE_SAMPLE)
-            if (sample.isNotEmpty() && sample.none(::isReadable)) paths.clear()
+            checkSampleReadable(paths)
         }
         if (mediaType == MediaType.PHOTOS) {
             if (paths.isEmpty()) throw AlbumIndexException("The selected albums have no readable supported photos. Refresh the Mac index or choose another album.")
@@ -432,19 +428,38 @@ class SmbGuestPhotoSource(
         }
     }
 
-    /** True if the file opens for reading; a per-file error means no, any other error (a dropped connection) is thrown. */
-    private fun isReadable(smbPath: String): Boolean = runCatching {
+    /**
+     * Checks that at least one of a random sample of [paths] opens. If none does, the share answered
+     * but its files are refused or missing (it happened while the clone was refreshing), which is
+     * temporary: the failure is logged by SMB status name only and [ShareUnreadableException] makes
+     * the player retry and show the stored artworks instead of stopping with an error.
+     */
+    private fun checkSampleReadable(paths: Collection<String>) {
+        val sample = paths.shuffled().take(ReadableSample.SIZE)
+        val failures = ReadableSample.check(sample, ::openFailure) ?: return
+        Log.w(
+            LOG_TAG,
+            "None of ${sample.size} sampled photos could be opened: " +
+                failures.entries.joinToString { "${it.key} x${it.value}" },
+        )
+        throw ShareUnreadableException(sample.size)
+    }
+
+    /**
+     * Null if the file opens for reading, else the SMB status name (or exception class) that refused
+     * it. Only a per-file error counts as a refusal; any other error (a dropped connection) is thrown.
+     */
+    private fun openFailure(smbPath: String): String? = runCatching {
         withDiskShare { share ->
             val file = share.openFile(smbPath, EnumSet.of(AccessMask.GENERIC_READ),
                 EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL), SMB2ShareAccess.ALL,
                 SMB2CreateDisposition.FILE_OPEN, EnumSet.of(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE))
             file.close()
-            true
         }
-    }.fold(
-        onSuccess = { it },
-        onFailure = { error -> if (error.smbFailureKind() == SmbFailureKind.PER_FILE) false else throw error },
-    )
+        null
+    }.getOrElse { error ->
+        if (error.smbFailureKind() == SmbFailureKind.PER_FILE) error.safeSmbStatus() ?: error.safeCauseChain() else throw error
+    }
 
     private fun isSafeAlbumPath(path: String): Boolean {
         val parts = path.replace('\\', '/').split('/')
@@ -635,7 +650,6 @@ class SmbGuestPhotoSource(
         const val DEFAULT_POOL_SIZE = 250
         const val ALBUM_CATALOG_FILE = "photos-album-catalog-v1.json"
         private const val LOG_TAG = "PhotoSource"
-        private const val READABLE_SAMPLE = 8
         private const val SMB_PORT = 445
         private const val SMB_TIMEOUT_SECONDS = 15L
         private const val MAX_METADATA_BYTES = 512 * 1024

@@ -25,11 +25,20 @@ internal enum class SmbFailureKind {
 /** The SMB endpoint is reachable but is not something this source can read. */
 internal class SmbConfigurationException(message: String) : RuntimeException(message)
 
+/**
+ * The share answered, but none of a sample of listed photos could be opened (access denied, missing
+ * file, sharing violation). Seen while the clone was being refreshed. It is treated as temporary, so
+ * the slideshow retries and shows the stored artworks instead of stopping with an error.
+ */
+internal class ShareUnreadableException(sampleSize: Int) :
+    RuntimeException("None of $sampleSize sampled photos could be opened")
+
 internal fun Throwable.smbFailureKind(): SmbFailureKind {
     val chain = causes()
     if (chain.any { it is SMB2GuestSigningRequiredException || it is SmbConfigurationException }) {
         return SmbFailureKind.CONFIGURATION
     }
+    if (chain.any { it is ShareUnreadableException }) return SmbFailureKind.TRANSIENT
     chain.filterIsInstance<SMBApiException>().firstOrNull()?.let { api ->
         return when (api.status) {
             in CONFIGURATION_STATUSES -> SmbFailureKind.CONFIGURATION
