@@ -1,10 +1,10 @@
 #!/bin/zsh
-# Make supported photo originals in the LIVE Photos library readable by others (adds go+r), so the
-# Carbon Copy Cloner clone shared as SMB Guest becomes readable by the TV.
+# Make supported photo and video originals in the LIVE Photos library readable by others (adds go+r),
+# so the Carbon Copy Cloner clone shared as SMB Guest becomes readable by the TV.
 #
 # Interactive use on the Mac mini, as the library owner (no sudo):
-#   zsh make_photos_readable.sh scan              # counts of photos not readable by others (no changes)
-#   zsh make_photos_readable.sh apply             # add go+r to those photos; record changed paths for revert
+#   zsh make_photos_readable.sh scan              # counts of photos/videos not readable by others (no changes)
+#   zsh make_photos_readable.sh apply             # add go+r to those files; record changed paths for revert
 #   zsh make_photos_readable.sh revert            # remove go+r from every path recorded by apply
 #   zsh make_photos_readable.sh diagnose          # check volume/library/originals access from this context
 #   zsh make_photos_readable.sh status            # recent log lines (user and CCC runs)
@@ -15,11 +15,15 @@
 # change, logs counts to /Library/Logs/make_photos_readable.log, and always exits 0 so a problem
 # never aborts the backup. Use `sudo zsh <that copy> revert` to undo CCC-applied changes.
 #
-# Scope: regular files below the library's `originals` only, with the extensions the TV app displays
-# (as a normal user, only files owned by that user). Never touches videos, the Photos database, other
-# package folders, the clone, or directories. Only permission bits change. Logs are counts only; the
+# Scope: regular files below the library's `originals` only, with the photo and video extensions the
+# TV app displays or plays (as a normal user, only files owned by that user). Never touches the Photos
+# database, other package folders, the clone, or directories. Only permission bits change. Videos
+# include the short motion clips Photos stores next to Live Photos. Logs are counts only; the
 # manifests hold private paths and stay on the Mac mini.
-# LIVE, STATE_DIR, LOG, NO_LAUNCHCTL, and FAKE_ROOT can be overridden from the environment (for testing).
+# INCLUDE_VIDEOS=0 restricts a run to photos (the behavior before 2026-10-17). `revert` always undoes
+# every recorded path, photo or video.
+# LIVE, STATE_DIR, LOG, NO_LAUNCHCTL, INCLUDE_VIDEOS, and FAKE_ROOT can be overridden from the
+# environment (for testing).
 
 set -u
 setopt NO_MULTIOS  # so `cmd 2>&1 >/dev/null` captures only stderr
@@ -71,22 +75,28 @@ need_live() {
   [ -z "$err" ] || die "cannot list originals: $err"
 }
 
-# NUL-separated list of supported photos that others cannot read. As a normal user, only that
-# user's files. As root (CCC), no owner filter: Samsung_T5 ignores ownership, so every file appears
-# to belong to whoever looks at it.
-unreadable_photos() {
-  local owner_filter=()
+PHOTO_EXTS=(jpg jpeg png webp heic heif)
+VIDEO_EXTS=(mov mp4 m4v 3gp 3g2 avi mpg mpeg mts m2ts)
+
+# NUL-separated list of supported photos (and, unless INCLUDE_VIDEOS=0, videos) that others cannot
+# read. As a normal user, only that user's files. As root (CCC), no owner filter: Samsung_T5 ignores
+# ownership, so every file appears to belong to whoever looks at it.
+unreadable_media() {
+  local owner_filter=() exts=("${PHOTO_EXTS[@]}") ext
+  local name_args=()
   is_root || owner_filter=(-user "$(id -un)")
+  [ "${INCLUDE_VIDEOS:-1}" = 0 ] || exts+=("${VIDEO_EXTS[@]}")
+  for ext in "${exts[@]}"; do name_args+=(-o -iname "*.$ext"); done
+  name_args=("${(@)name_args[2,-1]}")  # drop the leading -o
   find "$LIVE/originals" -type f "${owner_filter[@]}" ! -perm -o+r \
-    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.heic' -o -iname '*.heif' \) \
-    -print0 2>/dev/null
+    \( "${name_args[@]}" \) -print0 2>/dev/null
 }
 count0() { tr -cd '\0' | wc -c | xargs; }
 
 do_apply() {
   need_live
   local manifest="$STATE_DIR/changed-$(date +%Y%m%d-%H%M%S).lst" found left failed=0
-  unreadable_photos > "$manifest.tmp"
+  unreadable_media > "$manifest.tmp"
   found=$(count0 < "$manifest.tmp")
   if [ "$found" -gt 0 ]; then
     xargs -0 chmod go+r < "$manifest.tmp" 2>/dev/null || failed=1
@@ -94,7 +104,7 @@ do_apply() {
   else
     rm -f "$manifest.tmp"
   fi
-  left=$(unreadable_photos | count0)
+  left=$(unreadable_media | count0)
   log "apply found=$found still_unreadable=$left chmod_error=$failed"
   echo "found=$found still_unreadable=$left chmod_error=$failed"
 }
@@ -110,9 +120,9 @@ case "$mode" in
     ;;
   scan)
     need_live
-    echo "photos not readable by others, by extension:"
-    unreadable_photos | tr '\0' '\n' | sed -nE 's/.*\.([^.]+)$/\1/p' | tr '[:upper:]' '[:lower:]' | sort | uniq -c
-    echo "total: $(unreadable_photos | count0)"
+    echo "photos and videos not readable by others, by extension:"
+    unreadable_media | tr '\0' '\n' | sed -nE 's/.*\.([^.]+)$/\1/p' | tr '[:upper:]' '[:lower:]' | sort | uniq -c
+    echo "total: $(unreadable_media | count0)"
     ;;
   apply)
     do_apply
@@ -142,6 +152,6 @@ case "$mode" in
     rm -f "$HOME/Library/LaunchAgents/$LABEL.plist"; echo "removed $LABEL"
     ;;
   *)
-    sed -n '2,22p' "$SCRIPT_PATH"; exit 2
+    awk 'NR>1 && /^#/ {print; next} NR>1 {exit}' "$SCRIPT_PATH"; exit 2
     ;;
 esac

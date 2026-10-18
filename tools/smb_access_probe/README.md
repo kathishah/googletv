@@ -14,6 +14,6 @@ Every tool here prints counts only. Never commit sample lists, manifests, host a
 | `VideoPlaybackProbe.kt` | TV, as a temporary activity | Plays clips from the SMB share through `MediaPlayer` and logs first-frame, stall, and throughput numbers under the `VideoProbe` tag, or measures raw parallel read rate. Needs a manifest entry while installed; remove both afterwards. Reads `files/vtest.txt` (`label<TAB>path<TAB>prefetch`, negative prefetch means raw threads). |
 | `compare_clone_modes.sh` | Mac mini | Read-only comparison of modes, owners, bytes, and xattr names between the live library and its CCC clone. |
 | `heic_perm_trial.sh` | Mac mini (user) | Fixed 25-HEIC permission trial with `select`, `check`, `apply`, `revert`, and `names`. |
-| `make_photos_readable.sh` | Mac mini (user, or CCC as root) | Adds group/other read to supported photo originals in the live library. Subcommands: `scan`, `apply`, `revert`, `diagnose`, and `status`. Also has a CCC "before copying files" mode that always exits 0. |
+| `make_photos_readable.sh` | Mac mini (user, or CCC as root) | Adds group/other read to supported photo and video originals in the live library (`INCLUDE_VIDEOS=0` for photos only). Subcommands: `scan`, `apply`, `revert`, `diagnose`, and `status`. Also has a CCC "before copying files" mode that always exits 0. |
 
-The Mac mini scripts change permission bits only, and only for supported photo files below `originals`. They never write to the clone, and never open the Photos database.
+The Mac mini scripts change permission bits only, and only for supported photo and video files below `originals`. They never write to the clone, and never open the Photos database.
