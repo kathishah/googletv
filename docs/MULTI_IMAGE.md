@@ -1,6 +1,6 @@
 # Multi-image layout: portrait pairs
 
-Status: **draft spec, 2026-10-18. Not implemented.** Roadmap item 10, first part. Mock: [portrait-pairs.html](mockups/portrait-pairs.html) (today's single portrait, the plain pair, and four three-slice styles: pinstripes, diamond lattice, walnut frame, brass fillet mat).
+Status: **in progress, started 2026-10-18.** Milestone 1 (catalog v5) is done; see the [plan](#implementation-plan). Roadmap item 10, first part. Mock: [portrait-pairs.html](mockups/portrait-pairs.html) (today's single portrait, the plain pair, and four three-slice styles: pinstripes, diamond lattice, walnut frame, brass fillet mat).
 
 ## Goal
 
@@ -119,10 +119,10 @@ Instead of black, the free space is divided into **three equal slices: left, mid
 
 ### Catalog version 5
 
-`PhotosAlbumCatalog.VERSION` becomes 5. It adds one top-level list, `portrait`: the safe `originals`-relative path of every active photo whose displayed aspect is in the pairable band. Like `excluded`, it is looked up case-insensitively with either slash (the same helper, generalized). A catalog with another version is rejected and rebuilt on the next picker open or refresh, as for the version 3 to 4 change.
+`PhotosAlbumCatalog.VERSION` becomes 5. It adds one top-level list, `portrait`: the safe `originals`-relative path of every active photo whose displayed aspect is in the pairable band. Like `excluded`, it is looked up case-insensitively with either slash (the same helper, generalized and renamed from `PhotoExclusion` to `PathSet`). A catalog with another version is rejected and rebuilt on the next picker open or refresh, as for the version 3 to 4 change.
 
-- **Query.** One more pass over `ZASSET` joined to `ZADDITIONALASSETATTRIBUTES`, in the same read as the other queries: `ZKIND=0`, `ZTRASHEDSTATE=0`, positive original width and height, displayed aspect `(orientation in 5..8 ? height ÷ width : width ÷ height)` between 0.56 and 0.9. Excluded photos (screenshots, documents, receipts) are left out of the list.
-- **Size.** About 7,700 paths: roughly 0.4 MB added to the 2.2 MB catalog, and a catalog read that is a few tenths of a second longer. Measure on the TV.
+- **Query.** One more pass over `ZASSET` joined to `ZADDITIONALASSETATTRIBUTES`, in the same read as the other queries: `ZKIND=0`, `ZTRASHEDSTATE=0`, not a shared-album copy (`ZSAVEDASSETTYPE<>4`), positive original width and height, displayed aspect `(orientation in 5..8 ? height ÷ width : width ÷ height)` between 0.56 and 0.9 (a `CASE` in the SQL, repeated in `PortraitRules` so the rule is unit-tested). Excluded photos (screenshots, documents, receipts) are left out of the list by the mapper.
+- **Size (measured on the TV).** 7,712 paths: the catalog went from 2,207,985 to 2,570,455 bytes (+0.36 MB), and a cached read takes 2.2 to 2.4 s (v2 measured 2.3 to 2.8 s during a refresh, so no visible change). The new query takes 10.4 s on the TV inside a 63.8 s refresh (the other 40 s is SQLite's first read building the WAL index, as before).
 - **Unknown means single.** A photo newer than the catalog, or one whose original size is missing, is not in the list and is shown alone. The safe failure is today's look.
 - **All mode** gets orientation from the same list: the walk samples photos as now and the planner looks each one up, so no extra file is opened and the walk is unchanged. Album mode looks up the album's paths the same way.
 - **Pairing is a view concern.** `SmbGuestPhotoSource` returns slides and the pairable flag per slide from the catalog; the pair planning runs in the player (or a small helper it calls) so the same code serves any source. The bundled-sample source has no catalog and returns only singles.
@@ -140,7 +140,7 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 
 | # | Milestone | Main work | Exit check |
 | --- | --- | --- | --- |
-| 1 | Catalog v5 with `portrait` | Query and JSON, generalize `PhotoExclusion` to a path set, bump `VERSION`; JVM tests for orientation swap, aspect band, round trip, v4 rejection | Refresh on the TV builds v5; the list has about 7,700 paths (matches the Mac count within the snapshot lag); a 24-photo sample of listed paths checked against the files' real shape; catalog read time recorded |
+| 1 | Catalog v5 with `portrait` (**done 2026-10-18**) | Query and JSON, generalize `PhotoExclusion` to a path set (`PathSet`), bump `VERSION`; JVM tests for orientation swap, aspect band, round trip, v4 rejection | **Met:** see [device testing](DEVICE_TESTING.md#portrait-pairs-milestone-1-catalog-v5-2026-10-18). Refresh on the TV builds v5; the list has about 7,700 paths (matches the Mac count within the snapshot lag); a 24-photo sample of listed paths checked against the files' real shape; catalog read time recorded |
 | 2 | `PairPlanner`, `PairFit`, and the look chooser | Pure Kotlin: the planning pass with the 0.6 pair probability and a passed-in random source, the rectangles, and the style and variant chooser (never the same style twice in a row); JVM tests (odd counts, no pairables, videos, a fixed seed gives a fixed plan, probability 0 gives no pairs, probability 1 pairs all, rectangles for every combination in the table, near-limit aspects, no repeated style) | Tests pass; the table's fill figures reproduce; over 10,000 simulated photos about 60% of portraits end up paired |
 | 3 | Renderer | Second photo layer, per-photo labels, `PairFit` in `SlideshowView`, and the three-slice background (the four styles, the color sampling, the black fallback); a test pair from a sample catalog in the in-app preview | Screenshots of a 3:4 pair in each of the four styles, a 3:4 + 2:3 pair, and a rotated-orientation pair: upright, equal height, three equal slices, labels inside their photos, no black; the user picks the styles to keep |
 | 4 | Player integration | Slides carry a partner, preload both, failure rules (one fails, not ready, three failures), stored artworks stay single | Real portrait photos from the library in the in-app slideshow: pair timing with 12 MP and 24 MP photos, no blank frames, failure paths exercised, a 30-minute soak with stable memory |
@@ -158,6 +158,8 @@ User decisions, 2026-10-18:
 - **A lone portrait stays on black**, as today; only pairs get a pattern or frame.
 
 ## Decisions to confirm
+
+**Resolved 2026-10-18:** the user asked for the recommended defaults to be used for every item below, and the build follows them. Item 8: the pattern is always on with Portrait pairs (no third Layout choice). Item 9: pinstripes and lattice take their tones from the photos, the two frame styles use fixed tones with random variants (walnut, oak, cherry; brass on charcoal, silver on navy, brass on navy), and no further frame idea was added.
 
 Recommended defaults are used above.
 

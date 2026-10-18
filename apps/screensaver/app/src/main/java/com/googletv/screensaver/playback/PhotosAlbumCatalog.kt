@@ -20,7 +20,8 @@ internal object PhotosAlbumCatalog {
     // in `originals`, so about 18% of version 2's videos could never play.
     // Version 4 adds `excluded`, the photos the slideshow never shows (screenshots, documents,
     // receipts), and drops them from every album's `paths`.
-    internal const val VERSION = 4
+    // Version 5 adds `portrait`, the photos whose displayed shape allows pairing two on one slide.
+    internal const val VERSION = 5
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
 
     /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
@@ -71,7 +72,13 @@ internal object PhotosAlbumCatalog {
             val path = excludedArray.getString(index)
             require(CatalogPaths.isSafePhotoPath(path) && excluded.add(path))
         }
-        return AlbumIndex(albums, createdAt, root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 }, libraryVideos, excluded)
+        val portraitArray = root.getJSONArray("portrait")
+        val portrait = linkedSetOf<String>()
+        for (index in 0 until portraitArray.length()) {
+            val path = portraitArray.getString(index)
+            require(CatalogPaths.isSafePhotoPath(path) && portrait.add(path))
+        }
+        return AlbumIndex(albums, createdAt, root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 }, libraryVideos, excluded, portrait)
     }
 
     private fun readVideos(array: JSONArray): List<VideoItem> {
@@ -179,6 +186,34 @@ internal object PhotosAlbumCatalog {
                 }
             }
             timings.note("excluded_rows", excludedRowCount)
+            var portraitRowCount = 0L
+            timings.time("sqlite_portrait") {
+                // The band test in SQL keeps the result to the portrait rows (about a third of the library);
+                // PortraitRules repeats it in Kotlin so the rule is unit-tested. EXIF orientations 5 to 8 swap
+                // the sides. ZORIGINAL* describe the original file, not the edited version Photos shows.
+                database.rawQuery(
+                    """SELECT a.ZDIRECTORY, a.ZFILENAME, y.ZORIGINALWIDTH, y.ZORIGINALHEIGHT, y.ZORIGINALORIENTATION
+                       FROM ZASSET a JOIN ZADDITIONALASSETATTRIBUTES y ON y.ZASSET=a.Z_PK
+                       WHERE a.ZKIND=0 AND a.ZTRASHEDSTATE=0 AND a.ZSAVEDASSETTYPE<>$SHARED_ASSET_TYPE
+                         AND y.ZORIGINALWIDTH>0 AND y.ZORIGINALHEIGHT>0
+                         AND (CASE WHEN y.ZORIGINALORIENTATION BETWEEN 5 AND 8
+                                   THEN CAST(y.ZORIGINALHEIGHT AS REAL) / y.ZORIGINALWIDTH
+                                   ELSE CAST(y.ZORIGINALWIDTH AS REAL) / y.ZORIGINALHEIGHT END)
+                             BETWEEN ${PortraitRules.MIN_ASPECT} AND ${PortraitRules.MAX_ASPECT}""".trimIndent(),
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        portraitRowCount += 1
+                        mapper.addPortraitPhoto(
+                            PortraitRow(
+                                cursor.stringOrNull(0), cursor.stringOrNull(1),
+                                cursor.intOrNull(2), cursor.intOrNull(3), cursor.intOrNull(4),
+                            ),
+                        )
+                    }
+                }
+            }
+            timings.note("portrait_rows", portraitRowCount)
         } catch (error: Exception) {
             throw AlbumIndexException("The Photos database schema could not be read. Check that the Mac Photos library is available and try Refresh.")
         } finally {
@@ -191,6 +226,7 @@ internal object PhotosAlbumCatalog {
         timings.note("paths", index.albums.sumOf { it.paths.size }.toLong())
         timings.note("library_videos", index.videos.size.toLong())
         timings.note("album_videos", index.albums.sumOf { it.videos.size }.toLong())
+        timings.note("portrait_paths", index.portraitPaths.size.toLong())
         return index
     }
 
@@ -234,6 +270,7 @@ internal object PhotosAlbumCatalog {
         root.put("albums", albums)
         root.put("videos", encodeVideos(index.videos))
         root.put("excluded", JSONArray().apply { index.excludedPaths.forEach(::put) })
+        root.put("portrait", JSONArray().apply { index.portraitPaths.forEach(::put) })
         return root.toString()
     }
 

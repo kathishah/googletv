@@ -26,6 +26,7 @@ class PhotosAlbumCatalogJsonTest {
         sourceModifiedMillis = 1_700_000_100_000L,
         videos = listOf(VideoItem("0/c.mov", 31.633, 31_000_000L), VideoItem("9/d.mp4", 4.0, 9_000_000L)),
         excludedPaths = linkedSetOf("0/shot.png", "1/receipt.heic"),
+        portraitPaths = linkedSetOf("0/a.jpg", "2/tall.heic"),
     )
 
     private fun json(change: (JSONObject) -> Unit): String =
@@ -56,7 +57,8 @@ class PhotosAlbumCatalogJsonTest {
         assertRejected(json { it.put("version", 1) })
         assertRejected(json { it.put("version", 2) }) // version 2 listed shared-album videos that cannot play
         assertRejected(json { it.put("version", 3) }) // version 3 had no exclusion list
-        assertEquals(4, PhotosAlbumCatalog.VERSION)
+        assertRejected(json { it.put("version", 4) }) // version 4 had no portrait list
+        assertEquals(5, PhotosAlbumCatalog.VERSION)
     }
 
     @Test
@@ -65,6 +67,25 @@ class PhotosAlbumCatalogJsonTest {
         assertRejected(json { it.getJSONArray("excluded").put(0, "../x.png") })
         assertRejected(json { it.getJSONArray("excluded").put(0, "0/clip.mov") })
         assertRejected(json { it.getJSONArray("excluded").put(1, "0/shot.png") })
+    }
+
+    @Test
+    fun thePortraitListIsRequiredSafeAndDuplicateFree() {
+        assertRejected(json { it.remove("portrait") })
+        assertRejected(json { it.getJSONArray("portrait").put(0, "../x.heic") })
+        assertRejected(json { it.getJSONArray("portrait").put(0, "0/clip.mov") })
+        assertRejected(json { it.getJSONArray("portrait").put(1, "0/a.jpg") })
+    }
+
+    @Test
+    fun aVersion4FileWithAPortraitListStillNeedsTheNewVersion() {
+        assertRejected(json { it.put("version", 4) })
+    }
+
+    @Test
+    fun anEmptyPortraitListRoundTrips() {
+        val empty = sample.copy(portraitPaths = emptySet())
+        assertEquals(empty, PhotosAlbumCatalog.parse(PhotosAlbumCatalog.encode(empty)))
     }
 
     @Test

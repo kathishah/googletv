@@ -50,6 +50,15 @@ internal data class VideoRow(
     val sizeBytes: Long?,
 )
 
+/** One row of the portrait query: the original file's raw pixel size and EXIF orientation. */
+internal data class PortraitRow(
+    val directory: String?,
+    val filename: String?,
+    val width: Int?,
+    val height: Int?,
+    val orientation: Int?,
+)
+
 /**
  * Turns query rows into an [AlbumIndex]. Plain Kotlin so the rules can be tested on the JVM; the
  * SQL itself lives in [PhotosAlbumCatalog].
@@ -70,6 +79,7 @@ internal class AlbumCatalogMapper(private val zone: ZoneId = ZoneId.systemDefaul
     private val albums = linkedMapOf<String, MutableAlbum>()
     private val libraryVideos = linkedMapOf<String, VideoItem>()
     private val excludedPhotos = linkedSetOf<String>()
+    private val portraitPhotos = linkedSetOf<String>()
 
     fun addAlbumRow(row: AlbumRow) {
         val id = row.albumId ?: return
@@ -95,9 +105,15 @@ internal class AlbumCatalogMapper(private val zone: ZoneId = ZoneId.systemDefaul
         CatalogPaths.safePhotoPath(directory, filename)?.let { excludedPhotos.add(it) }
     }
 
+    /** A photo whose displayed shape is portrait enough to share a slide (see [PortraitRules]). The SQL only pre-filters. */
+    fun addPortraitPhoto(row: PortraitRow) {
+        if (!PortraitRules.isPairable(row.width ?: return, row.height ?: return, row.orientation)) return
+        CatalogPaths.safePhotoPath(row.directory, row.filename)?.let { portraitPhotos.add(it) }
+    }
+
     /** Excluded photos are dropped from every album here, so album counts and covers never include them. */
     fun build(createdAtMillis: Long): AlbumIndex {
-        val exclusion = PhotoExclusion(excludedPhotos)
+        val exclusion = PathSet(excludedPhotos)
         return AlbumIndex(
             albums = albums.values.map { album ->
                 val date = listOfNotNull(album.start, album.end).maxOrNull()
@@ -107,6 +123,8 @@ internal class AlbumCatalogMapper(private val zone: ZoneId = ZoneId.systemDefaul
             createdAtMillis = createdAtMillis,
             videos = libraryVideos.values.toList(),
             excludedPaths = excludedPhotos.toSet(),
+            // An excluded photo is never shown, so it must not be listed as a pairing candidate either.
+            portraitPaths = portraitPhotos.filterTo(linkedSetOf()) { it !in exclusion },
         )
     }
 

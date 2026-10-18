@@ -61,6 +61,8 @@ data class AlbumIndex(
     val videos: List<VideoItem> = emptyList(),
     /** Photos the Photos app classified as screenshots, documents, or receipts; relative to `originals`. */
     val excludedPaths: Set<String> = emptySet(),
+    /** Active photos whose displayed aspect is between 0.56 and 0.9, so two of them can share a slide. Unlisted photos are shown alone. */
+    val portraitPaths: Set<String> = emptySet(),
 )
 data class AlbumCatalogProgress(val message: String, val bytesCopied: Long? = null, val totalBytes: Long? = null)
 class AlbumIndexException(message: String) : IllegalStateException(message)
@@ -110,13 +112,13 @@ class SmbGuestPhotoSource(
      * Screenshots, documents, and receipts from the saved catalog. Without a usable catalog (never
      * built, or an older version waiting for a refresh) nothing is filtered; the log says so.
      */
-    private fun savedExclusion(): PhotoExclusion {
+    private fun savedExclusion(): PathSet {
         val index = PhotosAlbumCatalog.read(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
         if (index == null) {
             Log.w(LOG_TAG, "No usable album catalog: screenshots, documents, and receipts are not filtered until it is refreshed")
-            return PhotoExclusion.NONE
+            return PathSet.NONE
         }
-        return PhotoExclusion(index.excludedPaths)
+        return PathSet(index.excludedPaths)
     }
 
     /** All photos plus videos from the catalog, or only videos, in proportion to the library's mix. */
@@ -132,7 +134,7 @@ class SmbGuestPhotoSource(
             return picked.map(::videoSlide)
         }
         // The walk comes first: the library's photo count decides how many slots videos get.
-        val (photos, photoCount) = walkPhotoSlides(poolSize, PhotoExclusion(index.excludedPaths))
+        val (photos, photoCount) = walkPhotoSlides(poolSize, PathSet(index.excludedPaths))
         val videoCount = SlideMixer.videoSlots(poolSize, libraryVideos.size, photoCount)
         val videos = SlideMixer.pickVideos(libraryVideos, videoCount).map(::videoSlide)
         return SlideMixer.shuffleTogether(photos.shuffled().take((poolSize - videos.size).coerceAtLeast(0)), videos)
@@ -145,7 +147,7 @@ class SmbGuestPhotoSource(
      * Walks the share and returns a uniform sample of at most [limit] photos and how many photos were
      * seen. Photos in [exclusion] are skipped before they are counted or sampled.
      */
-    private fun walkPhotoSlides(limit: Int, exclusion: PhotoExclusion): Pair<List<Slide>, Int> {
+    private fun walkPhotoSlides(limit: Int, exclusion: PathSet): Pair<List<Slide>, Int> {
         val startedAt = SystemClock.elapsedRealtime()
         var skippedDirectories = 0
         var excludedCount = 0
@@ -219,7 +221,7 @@ class SmbGuestPhotoSource(
                 Log.i(
                     LOG_TAG,
                     "Album catalog read from this TV: ${index.albums.size} albums, " +
-                        "${index.albums.sumOf { it.paths.size }} paths, ${index.videos.size} library videos, ${cacheFile.length()} bytes in " +
+                        "${index.albums.sumOf { it.paths.size }} paths, ${index.videos.size} library videos, ${index.portraitPaths.size} portrait photos, ${cacheFile.length()} bytes in " +
                         "${SystemClock.elapsedRealtime() - readStartedAt} ms",
                 )
                 return index
@@ -351,7 +353,7 @@ class SmbGuestPhotoSource(
         if (mediaType.includesPhotos) {
             // The catalog builder already leaves excluded photos out of album paths; checking again keeps
             // a hand-edited or older catalog from showing them.
-            val exclusion = PhotoExclusion(index.excludedPaths)
+            val exclusion = PathSet(index.excludedPaths)
             var excludedCount = 0
             selectedAlbumIds.forEach { id ->
                 byId.getValue(id).paths.forEach { relative ->

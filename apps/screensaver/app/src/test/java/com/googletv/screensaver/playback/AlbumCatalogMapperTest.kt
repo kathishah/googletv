@@ -170,6 +170,51 @@ class AlbumCatalogMapperTest {
         assertTrue(built().excludedPaths.isEmpty())
     }
 
+    private fun portrait(name: String, width: Int?, height: Int?, orientation: Int? = 1, directory: String? = "0") =
+        mapper.addPortraitPhoto(PortraitRow(directory, name, width, height, orientation))
+
+    @Test
+    fun portraitPhotosAreListedByTheirDisplayedShape() {
+        portrait("upright.heic", 3024, 4032) // 3:4 stored upright
+        portrait("turned.heic", 4032, 3024, orientation = 6) // 4:3 stored, shown turned: portrait
+        portrait("turned8.jpg", 4032, 3024, orientation = 8)
+        portrait("landscape.heic", 4032, 3024)
+        portrait("landscape-turned.heic", 3024, 4032, orientation = 6) // stored portrait, shown landscape
+        portrait("tall.jpg", 1000, 2000) // 0.5: taller than 9:16
+        portrait("square.jpg", 3000, 3000)
+        assertEquals(setOf("0/upright.heic", "0/turned.heic", "0/turned8.jpg"), built().portraitPaths)
+    }
+
+    @Test
+    fun portraitRowsNeedASizeASafePathAndAPhotoExtension() {
+        portrait("a.heic", null, 4032)
+        portrait("b.heic", 3024, null)
+        portrait("c.heic", 0, 4032)
+        portrait("d.heic", 3024, 4032, directory = "..")
+        portrait("e.heic", 3024, 4032, directory = null)
+        portrait("f.mov", 3024, 4032)
+        portrait("g.heic", 3024, 4032, orientation = null) // no orientation recorded: as stored
+        assertEquals(setOf("0/g.heic"), built().portraitPaths)
+    }
+
+    @Test
+    fun excludedPhotosAreNeverListedAsPortrait() {
+        portrait("scan.heic", 3024, 4032)
+        portrait("SHOT.PNG", 3024, 4032)
+        portrait("keep.heic", 3024, 4032)
+        mapper.addExcludedPhoto("0", "scan.heic")
+        mapper.addExcludedPhoto("0", "shot.png") // case differs
+        assertEquals(setOf("0/keep.heic"), built().portraitPaths)
+    }
+
+    @Test
+    fun aPortraitPhotoNeedsNoAlbumAndDuplicatesCollapse() {
+        portrait("solo.heic", 3024, 4032)
+        portrait("solo.heic", 3024, 4032)
+        assertEquals(setOf("0/solo.heic"), built().portraitPaths)
+        assertTrue(built().albums.isEmpty())
+    }
+
     @Test
     fun bitrateComesFromSizeAndDuration() {
         val item = VideoItem("a/b.mov", 10.0, 12_500_000L) // 10 Mbit per second

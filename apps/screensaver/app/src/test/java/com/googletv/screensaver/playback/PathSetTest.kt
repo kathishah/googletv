@@ -5,9 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PhotoExclusionTest {
+class PathSetTest {
     private val root = "Photos Library.photoslibrary\\originals"
-    private val exclusion = PhotoExclusion(setOf("0/1/Scan.HEIC", "A/b.png"))
+    private val exclusion = PathSet(setOf("0/1/Scan.HEIC", "A/b.png"))
 
     @Test
     fun matchesRelativePathsWithEitherSlashAndAnyCase() {
@@ -25,6 +25,13 @@ class PhotoExclusionTest {
     }
 
     @Test
+    fun containsSmbPathIsTheSameLookupUnderAnotherName() {
+        val portrait = PathSet(setOf("3/Tall.HEIC"))
+        assertTrue(portrait.containsSmbPath(root, "$root\\3\\tall.heic"))
+        assertFalse(portrait.containsSmbPath(root, "$root\\3\\wide.heic"))
+    }
+
+    @Test
     fun aPathOutsideTheRootOrTooShortNeverMatches() {
         assertFalse(exclusion.excludesSmbPath(root, root))
         assertFalse(exclusion.excludesSmbPath(root, "$root\\"))
@@ -33,9 +40,9 @@ class PhotoExclusionTest {
 
     @Test
     fun anEmptyListExcludesNothing() {
-        assertTrue(PhotoExclusion.NONE.isEmpty)
-        assertEquals(0, PhotoExclusion.NONE.size)
-        assertFalse(PhotoExclusion.NONE.excludesSmbPath(root, "$root\\0\\a.jpg"))
-        assertFalse("0/a.jpg" in PhotoExclusion.NONE)
+        assertTrue(PathSet.NONE.isEmpty)
+        assertEquals(0, PathSet.NONE.size)
+        assertFalse(PathSet.NONE.excludesSmbPath(root, "$root\\0\\a.jpg"))
+        assertFalse("0/a.jpg" in PathSet.NONE)
     }
 }
