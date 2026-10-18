@@ -51,11 +51,10 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         image.visibility = View.INVISIBLE
     }
 
-    /** Sizes the video surface to the clip's displayed size, scaled to fit with black bars (never cropped). */
+    /** Sizes the video surface to the clip's displayed size: fitted with black bars (never cropped), enlarged at most [VideoFitRules.MAX_UPSCALE] times. */
     fun fitVideo(videoWidth: Int, videoHeight: Int) {
-        if (videoWidth <= 0 || videoHeight <= 0 || width <= 0 || height <= 0) return
-        val scale = minOf(width.toFloat() / videoWidth, height.toFloat() / videoHeight)
-        videoSurface.layoutParams = LayoutParams((videoWidth * scale).toInt(), (videoHeight * scale).toInt(), Gravity.CENTER)
+        val fit = VideoFitRules.fit(videoWidth, videoHeight, width, height) ?: return
+        videoSurface.layoutParams = LayoutParams(fit.width, fit.height, Gravity.CENTER)
     }
 
     /** The label over a playing video, styled like a photo's. */

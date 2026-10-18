@@ -58,7 +58,7 @@ The settings table changes in two rows:
 ### Playback
 
 - **Dwell:** photos use the Interval setting. A video plays to its end, capped at **60 s**, whatever the Interval is (76% of clips are 60 s or shorter). A longer clip plays its first 60 s and moves on.
-- **Look:** letterboxed (never cropped, like photos), black bars, muted, no controls. The view is resized to the clip's displayed size on every size change, so rotated portrait clips are upright and correctly proportioned.
+- **Look:** letterboxed (never cropped, like photos), black bars, muted, no controls. A clip is enlarged to fit but by at most 2× its own pixel size, so small old clips are not stretched into blur (a 640-wide clip plays 1280 px wide; a 160×90 clip plays as a small centered window). The view is resized to the clip's displayed size on every size change, so rotated portrait clips are upright and correctly proportioned.
 - **Labels:** photos keep location and date from EXIF. For videos the date and, when present, location come from the container metadata (`MediaMetadataRetriever`, read from the same progressive source once the clip is ready). If a clip has neither, no label. **Measured:** of 9 clips, 7 had a date only, 1 had place and date, and 1 had none, so dates are reliable and locations are rare. The label is built by `VideoLabel`, with the same format as photos ("place · Jun 12, 2022", coordinates when no place name is found).
 - **Transitions:** none. The previous slide stays up until the next one is ready (first video frame rendered, or photo decoded), then it switches.
 - **Order:** one shuffled sequence. With Media *All* and videos included, the pool is drawn so videos appear in proportion to their share of the library (about 9%); Type *Videos* is all videos. With Media *Choose Albums*, all eligible items from the selected albums are shuffled together, as today.
@@ -125,7 +125,7 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 | 4 | Playback in the preview (**done 2026-10-17**) | Video surface in `SlideshowView` sized to the clip, `MediaPlayer` lifecycle, the low-buffer pause and resume safeguard, errors and skip rules, labels from container metadata | Portrait, landscape, rotated and HDR clips upright and correctly proportioned (user check); 20 consecutive clips with stable memory; failure and skip paths exercised. **Met:** see [device testing](DEVICE_TESTING.md#video-playback-in-the-in-app-slideshow-milestone-4-2026-10-17) |
 | 5 | Screensaver fallback (**done 2026-10-18**) | `forDream` flag in `PhotoSourceFactory`; the dream path returns the 500-photo *All* source when Type is not Photos; the settings note under Type | With Type = Photos + Videos and Type = Videos, idle activation shows 500 random photos and ignores saved albums while honoring Interval and Label; with Type = Photos behavior is unchanged (albums respected); the dream never touches video code or the video list. **Met:** the real idle-timeout activation was observed; see [device testing](DEVICE_TESTING.md#screensaver-idle-activation-milestone-5-2026-10-18) |
 | 6 | Videos type and covers (**done 2026-10-17**) | Type *Videos*, Media *All* with proportional videos (built in milestone 4), poster-frame covers | Each Type in the in-app slideshow; covers cached and persistent. **Met:** see [device testing](DEVICE_TESTING.md#poster-covers-milestone-6-2026-10-17) |
-| 7 | Hardening | Recorded logs per clip (phase timings, no names), docs, optional extras below | Docs and roadmap updated; open questions closed or recorded |
+| 7 | Hardening (**done 2026-10-18**) | Recorded logs per clip (phase timings, no names), a 60-minute soak, album-start and low-storage fixes, a cap on how far small clips are enlarged, docs | Docs and roadmap updated; open questions closed or recorded. **Met:** see [device testing](DEVICE_TESTING.md#hardening-milestone-7-2026-10-18) |
 
 Optional later: fetching the next clip's head during playback of a light clip, a rolling cache window for the few clips over the free-space limit, an audio toggle, HDR tuning.
 
@@ -146,8 +146,9 @@ Recommended defaults are used above.
 ## Open questions
 
 - Closed: dates come through `MediaMetadataRetriever` for most clips and locations rarely (7 of 9 had a date only); see Labels.
-- Does Dolby Vision or HLG content look acceptable on this 100-nit panel in the in-app slideshow? Unmeasured.
+- Closed: HEVC Main 10 clips played in the 60-minute soak with no reported color or brightness problem. Dolby Vision specifically was not singled out.
 - Real throughput variation over a long session (6–10 MB/s observed) and the right safe-start margin; tune with logs in milestone 3.
-- Closed for 22 consecutive clips (memory steady at 81–98 MB); a much longer soak, such as hours, is still to be done in milestone 7.
-- Album-mode previews take about 80 s before the first slide, because the existing code opens every selected photo to check it is readable before listing it. That is unchanged photo behavior, now visible next to video; skipping that per-file check is a candidate follow-up.
-- Whether the TV's idle timers (screen-off timeout, Art Mode) interrupt the in-app slideshow during long clips; the slideshow keeps the screen on while it runs, and the longest capped clip is 60 s.
+- Closed for a 60-minute soak (101 clips, memory 80–101 MB, 0 pauses); a soak of several hours is still not done.
+- Closed: album-mode previews no longer open every selected photo; a sample of 8 is checked (milestone 7).
+- Closed: the TV's idle timers did not interrupt the in-app slideshow in 15-, 30-, and 60-minute runs.
+- Open: a few black screens with a date caption were seen during the soak. Not tied to Motion JPEG or MPEG-4 (both render normally); the cause is unknown, so check the log for a `Video finished` line with an unusually short or long time if it recurs.
