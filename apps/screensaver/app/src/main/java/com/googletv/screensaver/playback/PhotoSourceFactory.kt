@@ -3,6 +3,7 @@ package com.googletv.screensaver.playback
 import android.content.Context
 import android.util.Log
 import com.googletv.screensaver.DreamPlan
+import com.googletv.screensaver.MediaType
 import com.googletv.screensaver.MediaTypeRules
 import com.googletv.screensaver.PhotoLabelMode
 import com.googletv.screensaver.PhotoSourceMode
@@ -45,6 +46,7 @@ object PhotoSourceFactory {
                 catalogCacheDirectory = context.filesDir,
                 selectedAlbumIds = if (randomPhotos) emptySet() else preferences.selectedAlbumIds(),
                 selectedAlbumMode = !randomPhotos && preferences.photoSelectionMode() == PhotoSelectionMode.ALBUMS,
+                mediaType = if (forDream) MediaType.PHOTOS else preferences.mediaType(),
             )
         }
     }

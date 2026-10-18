@@ -314,6 +314,25 @@ internal class ProgressiveReader(
         return minOf(sizeBytes.toDouble(), maxOf(prebuffer, toFinishInTime))
     }
 
+    /** Bytes already on this TV in an unbroken run starting at [position]; zero if its block is missing. */
+    fun contiguousBytesFrom(position: Long): Long = lock.withLock {
+        if (position < 0 || position >= sizeBytes) return 0L
+        var block = (position / blockBytes).toInt()
+        if (!present[block]) return 0L
+        val firstMissing = present.nextClearBit(block)
+        val end = if (firstMissing >= blockCount) sizeBytes else firstMissing.toLong() * blockBytes
+        end - position
+    }
+
+    /** True once every block is on this TV. */
+    val isComplete: Boolean get() = lock.withLock { presentBytes >= sizeBytes }
+
+    /** Seconds the rest of the download should take at the planning rate, or null if nothing is left. */
+    fun estimatedRemainingSeconds(): Double? = lock.withLock {
+        val remaining = sizeBytes - presentBytes
+        if (remaining <= 0) null else remaining / (planningRateLocked() * config.margin)
+    }
+
     fun stats(): ProgressiveStats = lock.withLock {
         ProgressiveStats(blocksFetched, bytesFetched, presentBytes, rate, refetches, readNanos / 1e9, writeNanos / 1e9)
     }

@@ -53,7 +53,8 @@ class PhotosAlbumCatalogJsonTest {
     @Test
     fun version1CatalogsAreRejectedSoTheyGetRebuilt() {
         assertRejected(json { it.put("version", 1) })
-        assertEquals(2, PhotosAlbumCatalog.VERSION)
+        assertRejected(json { it.put("version", 2) }) // version 2 listed shared-album videos that cannot play
+        assertEquals(3, PhotosAlbumCatalog.VERSION)
     }
 
     @Test

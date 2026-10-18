@@ -298,8 +298,7 @@ class MainActivity : Activity() {
         } else ""
         albumSummary.visibility = if (selectionMode == PhotoSelectionMode.ALBUMS) View.VISIBLE else View.GONE
         val note = MediaTypeRules.typeNote(mediaType)
-        // The second sentence goes away when video playback ships (milestone 4).
-        typeNote.text = note?.let { "$it Video playback isn't available in this build yet." }.orEmpty()
+        typeNote.text = note.orEmpty()
         typeNote.visibility = if (note != null) View.VISIBLE else View.GONE
     }
 
@@ -904,6 +903,7 @@ class MainActivity : Activity() {
             showEmptyState = view::showEmptyState,
             showError = view::showErrorState,
             fallbackSource = PhotoSourceFactory.createFallback(this, preferences),
+            videoStage = if (preferences.mediaType().includesVideos) VideoSurfaceStage(view) else null,
         ).also { it.start() }
     }
 

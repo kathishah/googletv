@@ -92,11 +92,15 @@ internal class SmbRemoteVideo private constructor(
     }
 }
 
-/** Gives a [ProgressiveReader] to `MediaPlayer`. Closing it closes the reader, which removes the temp file. */
+/**
+ * Gives a [ProgressiveReader] to `MediaPlayer` or `MediaMetadataRetriever`. Closing it does nothing:
+ * the framework may close a data source while others are still reading, and the reader's owner (the
+ * video stage) is the one that closes it, which also removes the temp file.
+ */
 internal class ProgressiveMediaDataSource(private val reader: ProgressiveReader) : MediaDataSource() {
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int = reader.readAt(position, buffer, offset, size)
 
     override fun getSize(): Long = reader.sizeBytes
 
-    override fun close() = reader.close()
+    override fun close() = Unit
 }

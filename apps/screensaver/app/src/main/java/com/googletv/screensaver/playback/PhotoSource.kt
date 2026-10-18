@@ -15,9 +15,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+enum class SlideKind { PHOTO, VIDEO }
+
+/** A video slide's [id] is its SMB path; [video] carries the duration and size the player plans with. */
 data class Slide(
     val id: String,
     val description: String,
+    val kind: SlideKind = SlideKind.PHOTO,
+    val video: VideoItem? = null,
 )
 
 /**
@@ -29,6 +34,9 @@ interface PhotoSource {
     fun loadSlides(): List<Slide>
 
     fun loadImage(slide: Slide): LoadedPhoto
+
+    /** Opens a video slide and waits until it is safe to play. Only sources that list video slides implement this. */
+    fun prepareVideo(slide: Slide): PreparedVideo = throw UnsupportedOperationException("This source has no videos.")
 
     /** Releases any shared connection. Callable from any thread; the source can be used again. */
     fun close() {}

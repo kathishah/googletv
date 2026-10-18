@@ -20,6 +20,8 @@ class SlideshowPlayer(
     private val showError: (String) -> Unit,
     /** Stored photos shown with [FALLBACK_LABEL] while [photoSource] keeps failing. Null = error text. */
     private val fallbackSource: PhotoSource? = null,
+    /** Plays video slides. Only the in-app slideshow passes one; without it video slides are dropped. */
+    private val videoStage: VideoStage? = null,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -48,6 +50,9 @@ class SlideshowPlayer(
     private var imageFailureStreak = 0
     private var imageRetryNotBefore = 0L
     private var delayedAction: Runnable? = null
+    private var videoPlayback: VideoPlayback? = null
+    private var videoActive = false
+    private var videoToken = 0
     private val scheduler = SlideshowScheduler(intervalMillis, ::showNextSlide)
 
     private data class PreparedPhoto(val slide: Slide, val photo: LoadedPhoto)
@@ -132,6 +137,7 @@ class SlideshowPlayer(
         pending = null
         cancelDelayed()
         exitFallback()
+        cancelVideo()
         photoSource.close()
         scheduler.stop()
         loadingImage = false
@@ -152,10 +158,14 @@ class SlideshowPlayer(
     }
 
     private fun showNextSlide() {
-        if (!active || slides.size < 2 || loadingImage) return
+        if (!active || slides.size < 2 || loadingImage || videoActive) return
         if (SystemClock.elapsedRealtime() < imageRetryNotBefore) return
         val nextIndex = (currentIndex + 1) % slides.size
         val nextSlide = slides[nextIndex]
+        if (nextSlide.kind == SlideKind.VIDEO) {
+            startVideoSlide(nextIndex, nextSlide)
+            return
+        }
         val ready = prepared?.takeIf { it.slide == nextSlide }
         if (ready != null) {
             prepared = null
@@ -170,8 +180,12 @@ class SlideshowPlayer(
     }
 
     private fun loadSlide(index: Int, runGeneration: Int) {
-        if (!active || loadingImage || index !in slides.indices) return
+        if (!active || loadingImage || videoActive || index !in slides.indices) return
         val slide = slides[index]
+        if (slide.kind == SlideKind.VIDEO) {
+            startVideoSlide(index, slide)
+            return
+        }
         loadingImage = true
         pending = worker.submit {
             val result = runCatching { photoSource.loadImage(slide) }
@@ -225,6 +239,7 @@ class SlideshowPlayer(
         ) return
         val nextIndex = (currentIndex + 1) % slides.size
         val slide = slides[nextIndex]
+        if (slide.kind == SlideKind.VIDEO) return // videos are prepared when their turn comes
         preloadingSlide = slide
         pending = worker.submit {
             val result = runCatching { photoSource.loadImage(slide) }
@@ -259,6 +274,116 @@ class SlideshowPlayer(
                 )
             }
         }
+    }
+
+    /**
+     * Prepares a video off the main thread (the previous slide stays on screen while the reader gets
+     * ahead), then hands it to the stage. The slideshow ignores its interval while the video is
+     * preparing or playing; the next slide follows as soon as the clip ends.
+     */
+    private fun startVideoSlide(index: Int, slide: Slide) {
+        val stage = videoStage
+        if (stage == null) {
+            // This source listed a video but nothing can show it: drop it rather than stall.
+            handleVideoFailure(index, slide, permanent = true, detail = "no video stage", runGeneration = generation)
+            return
+        }
+        if (!active || loadingImage || videoActive) return
+        val runGeneration = generation
+        loadingImage = true
+        pending = worker.submit {
+            val result = runCatching { photoSource.prepareVideo(slide) }
+            mainHandler.post {
+                if (!isCurrent(runGeneration)) {
+                    result.getOrNull()?.close()
+                    return@post
+                }
+                loadingImage = false
+                pending = null
+                result.fold(
+                    onSuccess = { video -> beginVideo(slide, video, stage, runGeneration) },
+                    onFailure = { error ->
+                        val skipped = error as? VideoSkippedException
+                        val permanent = skipped == null && error.smbFailureKind() == SmbFailureKind.PER_FILE
+                        val detail = skipped?.message ?: "${error.safeCauseChain()}, ${error.safeSmbStatus()}"
+                        handleVideoFailure(slides.indexOf(slide), slide, permanent, detail, runGeneration)
+                    },
+                )
+            }
+        }
+    }
+
+    private fun beginVideo(slide: Slide, video: PreparedVideo, stage: VideoStage, runGeneration: Int) {
+        val index = slides.indexOf(slide)
+        if (index < 0) {
+            video.close()
+            return
+        }
+        exitFallback()
+        currentIndex = index
+        currentSlide = slide
+        videoActive = true
+        val token = ++videoToken
+        fun current() = isCurrent(runGeneration) && videoToken == token
+        videoPlayback = stage.play(video, object : VideoEvents {
+            override fun onStarted() {
+                if (current()) noteImageLoaded()
+            }
+
+            override fun onDownloadComplete() {
+                if (current()) preloadNextSlide(runGeneration)
+            }
+
+            override fun onFinished() {
+                if (!current()) return
+                videoActive = false
+                videoPlayback = null
+                // A pool of one clip replays it; otherwise the next slide follows at once.
+                if (slides.size == 1) startVideoSlide(0, slide) else showNextSlide()
+            }
+
+            override fun onFailed(reason: VideoFailure) {
+                if (!current()) return
+                videoActive = false
+                videoPlayback = null
+                handleVideoFailure(slides.indexOf(slide), slide, reason == VideoFailure.UNPLAYABLE, "player: $reason", runGeneration)
+            }
+        })
+    }
+
+    /**
+     * An unplayable clip leaves the pool; one that was only too slow or stalled goes to the back to be
+     * tried again later. Either way the slideshow moves on at once, and three failures in a row show
+     * the stored photos like a failing photo source does.
+     */
+    private fun handleVideoFailure(index: Int, slide: Slide, permanent: Boolean, detail: String, runGeneration: Int) {
+        if (!isCurrent(runGeneration)) return
+        imageFailureStreak += 1
+        Log.w(LOG_TAG, "Skipping video (${if (permanent) "dropped" else "retry later"}: $detail), streak $imageFailureStreak")
+        if (index >= 0) {
+            slides.removeAt(index)
+            if (!permanent) slides.add(slide)
+            if (index < currentIndex) currentIndex--
+        }
+        if (slides.isEmpty()) {
+            scheduler.stop()
+            showError("Could not play any videos. They may be unavailable or unsupported.")
+            return
+        }
+        if (imageFailureStreak >= ERROR_AFTER_FAILURES) showUnavailable(runGeneration)
+        if (currentSlide == null) {
+            currentIndex = index.coerceIn(0, slides.lastIndex)
+            loadSlide(currentIndex, runGeneration)
+        } else {
+            mainHandler.post { if (isCurrent(runGeneration)) showNextSlide() }
+        }
+    }
+
+    private fun cancelVideo() {
+        videoToken += 1
+        videoPlayback?.cancel()
+        videoPlayback = null
+        videoActive = false
     }
 
     private fun handleUnreadableSlide(

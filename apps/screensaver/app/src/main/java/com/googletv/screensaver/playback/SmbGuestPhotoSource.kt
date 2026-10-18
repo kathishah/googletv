@@ -3,6 +3,7 @@ package com.googletv.screensaver.playback
 import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
+import com.googletv.screensaver.MediaType
 import com.googletv.screensaver.PhotoLabelMode
 import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.msfscc.FileAttributes
@@ -75,10 +76,13 @@ class SmbGuestPhotoSource(
     private val databaseStageDirectory: java.io.File = java.io.File(catalogCacheDirectory, "photos-db-stage"),
     private val selectedAlbumIds: Set<String> = emptySet(),
     private val selectedAlbumMode: Boolean = selectedAlbumIds.isNotEmpty(),
+    /** What the in-app slideshow plays. The screensaver always passes [MediaType.PHOTOS]. */
+    private val mediaType: MediaType = MediaType.PHOTOS,
 ) : PhotoSource {
     private val host = config.host.trim()
     private val shareName = config.share.trim()
     private val rootPath = normalizeRelativePath(config.rootPath)
+    private val videoCacheDirectory = java.io.File(fallbackCacheDirectory, "video-cache")
     private val connectionLock = Any()
     private var connection: SmbConnection? = null
     private val epoch = AtomicInteger()
@@ -96,15 +100,43 @@ class SmbGuestPhotoSource(
 
     override fun loadSlides(): List<Slide> {
         if (selectedAlbumMode) return loadSelectedAlbumSlides()
+        if (!mediaType.includesVideos) return walkPhotoSlides(poolSize).first
+        return loadLibrarySlidesWithVideos()
+    }
+
+    /** All photos plus videos from the catalog, or only videos, in proportion to the library's mix. */
+    private fun loadLibrarySlidesWithVideos(): List<Slide> {
+        ProgressiveReader.purgeStale(videoCacheDirectory)
+        val libraryVideos = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE)).videos
+        if (mediaType == MediaType.VIDEOS) {
+            val picked = SlideMixer.pickVideos(libraryVideos, poolSize)
+            if (picked.isEmpty()) {
+                throw AlbumIndexException("No playable videos were found in the library. Refresh the Mac index or set Type to Photos.")
+            }
+            return picked.map(::videoSlide)
+        }
+        // The walk comes first: the library's photo count decides how many slots videos get.
+        val (photos, photoCount) = walkPhotoSlides(poolSize)
+        val videoCount = SlideMixer.videoSlots(poolSize, libraryVideos.size, photoCount)
+        val videos = SlideMixer.pickVideos(libraryVideos, videoCount).map(::videoSlide)
+        return SlideMixer.shuffleTogether(photos.shuffled().take((poolSize - videos.size).coerceAtLeast(0)), videos)
+    }
+
+    private fun videoSlide(item: VideoItem) =
+        Slide("$rootPath\\${item.path.replace('/', '\\')}", "", SlideKind.VIDEO, item)
+
+    /** Walks the share and returns a uniform sample of at most [limit] photos and how many photos were seen. */
+    private fun walkPhotoSlides(limit: Int): Pair<List<Slide>, Int> {
         val startedAt = SystemClock.elapsedRealtime()
         var skippedDirectories = 0
+        var supportedPhotoCount = 0
         val slides = withDiskShare { diskShare ->
             skippedDirectories = 0
+            supportedPhotoCount = 0
             val directories = ArrayDeque<String>()
             val pool = mutableListOf<Slide>()
             directories.add(rootPath)
 
-            var supportedPhotoCount = 0
             while (directories.isNotEmpty()) {
                 val directory = directories.removeFirst()
                 val entries = try {
@@ -129,11 +161,11 @@ class SmbGuestPhotoSource(
                     } else if (isSupportedPhoto(name)) {
                         supportedPhotoCount += 1
                         val candidate = Slide(path, "Photo $supportedPhotoCount")
-                        if (pool.size < poolSize) {
+                        if (pool.size < limit) {
                             pool += candidate
                         } else {
                             val replacementIndex = Random.nextInt(supportedPhotoCount)
-                            if (replacementIndex < poolSize) pool[replacementIndex] = candidate
+                            if (replacementIndex < limit) pool[replacementIndex] = candidate
                         }
                     }
                 }
@@ -146,7 +178,7 @@ class SmbGuestPhotoSource(
             "Photo listing found ${slides.size} pooled photos in " +
                 "${SystemClock.elapsedRealtime() - startedAt} ms, $skippedDirectories folders skipped",
         )
-        return slides
+        return slides to supportedPhotoCount
     }
 
     fun loadAlbumIndex(
@@ -275,11 +307,11 @@ class SmbGuestPhotoSource(
         if ((selectedAlbumIds - byId.keys).isNotEmpty()) {
             throw AlbumIndexException("A selected album is no longer in the index. Remove it in Choose albums or return to All photos.")
         }
-        if (selectedAlbumIds.any { byId.getValue(it).paths.isEmpty() }) {
+        if (mediaType == MediaType.PHOTOS && selectedAlbumIds.any { byId.getValue(it).paths.isEmpty() }) {
             throw AlbumIndexException("One or more selected albums currently have no readable supported photos. Refresh the Mac index or remove that album in Choose albums.")
         }
         val paths = linkedSetOf<String>()
-        selectedAlbumIds.forEach { id ->
+        if (mediaType.includesPhotos) selectedAlbumIds.forEach { id ->
             byId.getValue(id).paths.forEach pathLoop@{ relative ->
                 if (!isSafeAlbumPath(relative)) return@pathLoop
                 val smbPath = "$rootPath\\${relative.replace('/', '\\')}"
@@ -297,8 +329,67 @@ class SmbGuestPhotoSource(
                 if (readable) paths += smbPath
             }
         }
-        if (paths.isEmpty()) throw AlbumIndexException("The selected albums have no readable supported photos. Refresh the Mac index or choose another album.")
-        return paths.toList().shuffled().mapIndexed { i, path -> Slide(path, "Photo ${i + 1}") }
+        if (mediaType == MediaType.PHOTOS) {
+            if (paths.isEmpty()) throw AlbumIndexException("The selected albums have no readable supported photos. Refresh the Mac index or choose another album.")
+            return paths.toList().shuffled().mapIndexed { i, path -> Slide(path, "Photo ${i + 1}") }
+        }
+        ProgressiveReader.purgeStale(videoCacheDirectory)
+        val videos = selectedAlbumIds.flatMap { byId.getValue(it).videos }.distinctBy { it.path }.map(::videoSlide)
+        val photos = paths.toList().shuffled().mapIndexed { i, path -> Slide(path, "Photo ${i + 1}") }
+        if (photos.isEmpty() && videos.isEmpty()) {
+            throw AlbumIndexException(
+                if (mediaType == MediaType.VIDEOS) "The selected albums have no videos. Choose other albums or set Type to Photos."
+                else "The selected albums have no readable photos or videos. Refresh the Mac index or choose another album.",
+            )
+        }
+        return SlideMixer.shuffleTogether(photos, videos)
+    }
+
+    /**
+     * Opens a video, waits until the progressive reader says it is safe to start, and reads the label
+     * from the container. Throws [VideoSkippedException] when the start wait would be too long.
+     */
+    override fun prepareVideo(slide: Slide): PreparedVideo {
+        val item = slide.video ?: throw IllegalArgumentException("Not a video slide.")
+        val remote = SmbRemoteVideo.open(SmbSourceConfig(host, shareName, rootPath), item.path)
+        val reader = ProgressiveReader(remote, ProgressiveReader.newCacheFile(videoCacheDirectory), item.durationSeconds)
+        try {
+            reader.start()
+            when (val gate = reader.awaitReadyToPlay()) {
+                is GateResult.Ready -> Log.i(
+                    LOG_TAG,
+                    "Video ready after ${gate.waitedMillis} ms at ${"%.1f".format(gate.bytesPerSecond / 1e6)} MB/s " +
+                        "(${"%.0f".format(item.bitrateMbps)} Mbps, ${"%.0f".format(item.durationSeconds)} s)",
+                )
+                is GateResult.TooSlow -> throw VideoSkippedException("Start would take about ${gate.estimatedWaitMillis / 1000} s", retryLater = true)
+                is GateResult.Failed -> throw gate.error
+                GateResult.Cancelled -> throw CancellationException("SMB source closed")
+            }
+            val label = videoLabel(reader)
+            Log.i(LOG_TAG, "Video label: ${when { label == null -> "none"; " · " in label -> "place and date"; else -> "one part" }}")
+            return PreparedVideo(reader, item.durationSeconds, label)
+        } catch (error: Throwable) {
+            reader.close()
+            throw error
+        }
+    }
+
+    private fun videoLabel(reader: ProgressiveReader): String? {
+        if (labelMode == PhotoLabelMode.NONE) return null
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(ProgressiveMediaDataSource(reader))
+            VideoLabel.format(
+                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DATE),
+                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_LOCATION),
+                labelMode,
+                placeNameLookup,
+            )
+        } catch (_: Throwable) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
     }
 
     private fun isSafeAlbumPath(path: String): Boolean {

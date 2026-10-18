@@ -16,8 +16,13 @@ internal object PhotosAlbumCatalog {
     // Bump when the query, path mapping, or JSON layout changes, so a saved catalog is never kept
     // for a newer build. A catalog with any other version is rejected and rebuilt on the next refresh.
     // Version 2 added per-album videos, `videoCount`, and a library-wide `videos` list.
-    internal const val VERSION = 2
+    // Version 3 leaves shared-album copies (ZSAVEDASSETTYPE 4) out of the video list: their files are not
+    // in `originals`, so about 18% of version 2's videos could never play.
+    internal const val VERSION = 3
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
+
+    /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
+    private const val SHARED_ASSET_TYPE = 4
 
     fun read(file: File): AlbumIndex? = runCatching {
         if (!file.isFile) return null
@@ -122,7 +127,7 @@ internal object PhotosAlbumCatalog {
                 database.rawQuery(
                     """SELECT a.ZDIRECTORY, a.ZFILENAME, a.ZDURATION, y.ZORIGINALFILESIZE
                        FROM ZASSET a LEFT JOIN ZADDITIONALASSETATTRIBUTES y ON y.ZASSET=a.Z_PK
-                       WHERE a.ZKIND=1 AND a.ZTRASHEDSTATE=0 AND a.ZHIDDEN=0""".trimIndent(),
+                       WHERE a.ZKIND=1 AND a.ZTRASHEDSTATE=0 AND a.ZHIDDEN=0 AND a.ZSAVEDASSETTYPE<>$SHARED_ASSET_TYPE""".trimIndent(),
                     null,
                 ).use { cursor ->
                     while (cursor.moveToNext()) {

@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Bitmap
 import android.view.Gravity
+import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -29,8 +30,15 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         visibility = View.GONE
     }
 
+    /**
+     * Video is drawn here. It sits under [image], which hides it until [revealVideo] makes the photo
+     * layer invisible, so a photo never flashes black while a clip is being prepared.
+     */
+    val videoSurface = SurfaceView(context)
+
     init {
         setBackgroundColor(Color.BLACK)
+        addView(videoSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
         addView(image, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(
             caption,
@@ -38,14 +46,36 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         )
     }
 
+    /** Hides the photo layer so the video surface shows through. */
+    fun revealVideo() {
+        image.visibility = View.INVISIBLE
+    }
+
+    /** Sizes the video surface to the clip's displayed size, scaled to fit with black bars (never cropped). */
+    fun fitVideo(videoWidth: Int, videoHeight: Int) {
+        if (videoWidth <= 0 || videoHeight <= 0 || width <= 0 || height <= 0) return
+        val scale = minOf(width.toFloat() / videoWidth, height.toFloat() / videoHeight)
+        videoSurface.layoutParams = LayoutParams((videoWidth * scale).toInt(), (videoHeight * scale).toInt(), Gravity.CENTER)
+    }
+
+    /** The label over a playing video, styled like a photo's. */
+    fun showVideoCaption(description: String?) {
+        applyCaption(description.orEmpty())
+    }
+
     fun show(slide: Slide, bitmap: Bitmap) {
+        image.visibility = View.VISIBLE
         image.setImageBitmap(bitmap)
         image.contentDescription = slide.description.ifBlank { "Slideshow photo" }
-        if (slide.description.isBlank()) {
+        applyCaption(slide.description)
+    }
+
+    private fun applyCaption(description: String) {
+        if (description.isBlank()) {
             caption.visibility = View.GONE
             return
         }
-        caption.text = slide.description
+        caption.text = description
         caption.setTextColor(Color.argb(218, 255, 255, 255))
         caption.setShadowLayer(3f, 1f, 1f, Color.argb(112, 0, 0, 0))
         caption.gravity = Gravity.BOTTOM or Gravity.START
@@ -59,16 +89,19 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     }
 
     fun showEmptyState() {
+        image.visibility = View.VISIBLE
         image.setImageDrawable(null)
         showStatus(context.getString(R.string.empty_photo_state), 24f)
     }
 
     fun showLoadingState() {
+        image.visibility = View.VISIBLE
         image.setImageDrawable(null)
         showStatus(context.getString(R.string.loading_photos), 22f)
     }
 
     fun showErrorState(message: String) {
+        image.visibility = View.VISIBLE
         image.setImageDrawable(null)
         showStatus(message, 20f)
     }

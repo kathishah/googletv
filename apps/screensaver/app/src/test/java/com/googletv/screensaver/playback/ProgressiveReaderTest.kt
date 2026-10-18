@@ -333,6 +333,29 @@ class ProgressiveReaderTest {
     }
 
     @Test
+    fun contiguousBytesFromReportsTheUnbrokenRunOnThisTv() {
+        val remote = FakeRemoteVideo(bytes(10_500), clock, initialPermits = 2) // only the tail and the head arrive
+        val reader = readerFor(remote).also { it.start() }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (reader.stats().blocksFetched < 2) { if (System.nanoTime() > deadline) fail("stuck"); Thread.sleep(5) }
+        assertEquals(1_000L, reader.contiguousBytesFrom(0))
+        assertEquals(500L, reader.contiguousBytesFrom(500))
+        assertEquals(0L, reader.contiguousBytesFrom(1_000)) // block 1 is not there yet
+        assertEquals(400L, reader.contiguousBytesFrom(10_100)) // the tail runs to the end of the file
+        assertEquals(0L, reader.contiguousBytesFrom(10_500))
+        assertEquals(0L, reader.contiguousBytesFrom(-5))
+        assertFalse(reader.isComplete)
+        assertNotNull(reader.estimatedRemainingSeconds())
+        remote.permits.release(1000)
+        awaitAllFetched(reader, 10_500)
+        assertEquals(10_500L, reader.contiguousBytesFrom(0))
+        assertEquals(10_000L, reader.contiguousBytesFrom(500))
+        assertTrue(reader.isComplete)
+        assertNull(reader.estimatedRemainingSeconds())
+        reader.close()
+    }
+
+    @Test
     fun theDefaultFreeSpaceCheckWorksWhenTheCacheFolderDoesNotExistYet() {
         val data = bytes(3_000)
         val file = File(temporaryFolder.root, "video-cache/nested/video-test.part")
