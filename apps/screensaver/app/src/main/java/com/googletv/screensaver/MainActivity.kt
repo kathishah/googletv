@@ -128,9 +128,14 @@ class MainActivity : Activity() {
             setPadding(dp(48), dp(14), dp(48), dp(18))
             setBackgroundColor(Color.rgb(16, 24, 33))
         }
-        root.addView(text(getString(R.string.app_name), 20f, true).apply {
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
+        header.addView(text(getString(R.string.app_name), 20f, true).apply {
             setTextColor(Color.rgb(150, 199, 236))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(text("Build ${BuildConfig.BUILD_TAG} · ${BuildConfig.BUILD_TIME}", 14f, false).apply {
+            setTextColor(Color.rgb(145, 160, 176))
         })
+        root.addView(header)
         root.addView(text("Slideshow settings", 27f, true).apply {
             setPadding(0, dp(3), 0, dp(4))
         })
