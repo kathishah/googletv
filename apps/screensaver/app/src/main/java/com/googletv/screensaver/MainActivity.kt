@@ -488,6 +488,10 @@ class MainActivity : Activity() {
         val staged = selectedAlbumIds.toMutableSet()
         var sortName = false
         val availableIds = albums.map { it.id }.toSet()
+        // Type Videos lists only albums that have videos; hidden albums keep any selection they had.
+        val visibleAlbums = albums.filter { MediaTypeRules.showsAlbum(mediaType, it.photoCount, it.videoCount) }
+        val visibleIds = visibleAlbums.map { it.id }.toSet()
+        android.util.Log.i("AlbumPicker", "Showing ${visibleAlbums.size} of ${albums.size} albums")
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(48), dp(28), dp(48), dp(20))
@@ -514,7 +518,7 @@ class MainActivity : Activity() {
         val dataAge = sourceModifiedMillis?.let {
             "  ·  Library data as of " + java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(it))
         }.orEmpty()
-        titleBlock.addView(text("Select the albums you want to see in your slideshow.$dataAge", 14f, false).apply {
+        titleBlock.addView(text("Select the albums you want to see in your slideshow.$dataAge${MediaTypeRules.subtitleSuffix(mediaType)}", 14f, false).apply {
             setTextColor(Color.rgb(181, 193, 204))
             setPadding(0, dp(4), 0, 0)
         })
@@ -586,8 +590,8 @@ class MainActivity : Activity() {
         val coverViews = linkedMapOf<String, ImageView>()
         val checks = linkedMapOf<String, TextView>()
         val orderedAlbums = {
-            if (sortName) albums.sortedWith(compareBy<AlbumEntry> { it.title.lowercase() })
-            else albums.sortedWith(compareByDescending<AlbumEntry> { it.yearMonth ?: "" }.thenBy { it.title.lowercase() })
+            if (sortName) visibleAlbums.sortedWith(compareBy<AlbumEntry> { it.title.lowercase() })
+            else visibleAlbums.sortedWith(compareByDescending<AlbumEntry> { it.yearMonth ?: "" }.thenBy { it.title.lowercase() })
         }
         fun photoCount(): Int = albums.asSequence()
             .filter { it.id in staged }
@@ -620,19 +624,23 @@ class MainActivity : Activity() {
                 card.contentDescription = "${albums.first { it.id == id }.title}, ${if (selected) "selected" else "not selected"}"
             }
             val unavailable = (staged - availableIds).size
-            val noItems = albums.count {
+            val noItems = visibleAlbums.count {
                 it.id in staged && MediaTypeRules.eligibleCount(mediaType, it.photoCount, it.videoCount) == 0
             }
+            val hiddenSelected = albums.count { it.id in staged && it.id !in visibleIds }
             val warning = when {
+                visibleAlbums.isEmpty() -> "No albums have videos. Choose another Type in settings."
                 unavailable > 0 -> "$unavailable previously selected album(s) aren't in the current catalog. Their selection is preserved."
                 noItems > 0 -> MediaTypeRules.emptySelectionWarning(mediaType, noItems).orEmpty()
+                MediaTypeRules.hiddenSelectionNote(mediaType, hiddenSelected) != null -> MediaTypeRules.hiddenSelectionNote(mediaType, hiddenSelected).orEmpty()
                 staged.isEmpty() -> "No albums selected. Choose one or more albums, or select All photos in settings."
                 else -> ""
             }
             notice.text = warning
             notice.visibility = if (warning.isNotEmpty()) View.VISIBLE else View.GONE
             removeUnavailable.visibility = if (unavailable > 0) View.VISIBLE else View.GONE
-            total.text = MediaTypeRules.totalText(mediaType, staged.size, photoCount(), videoCount())
+            val shownSelected = if (mediaType == MediaType.VIDEOS) staged.count { it in visibleIds } else staged.size
+            total.text = MediaTypeRules.totalText(mediaType, shownSelected, photoCount(), videoCount())
         }
         fun persistStagedSelection() {
             updateSelectionUi()
@@ -752,7 +760,7 @@ class MainActivity : Activity() {
         root.addView(bottom)
 
         selectAll.setOnClickListener {
-            staged.addAll(availableIds)
+            staged.addAll(visibleIds)
             persistStagedSelection()
         }
         clearAll.setOnClickListener {

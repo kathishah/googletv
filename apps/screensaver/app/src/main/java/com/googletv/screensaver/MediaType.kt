@@ -48,6 +48,18 @@ object MediaTypeRules {
         else -> videoText(videos)
     }
 
+    /** Whether the picker lists an album at all. Type Videos lists only albums that have videos; other Types list every album. */
+    fun showsAlbum(type: MediaType, photos: Int, videos: Int): Boolean = type != MediaType.VIDEOS || videos > 0
+
+    /** Appended to the picker's subtitle so a shorter list is not a surprise. */
+    fun subtitleSuffix(type: MediaType): String = if (type == MediaType.VIDEOS) "  ·  Showing only albums with videos" else ""
+
+    /** Said when selected albums are hidden by the filter: they stay selected for other Types. */
+    fun hiddenSelectionNote(type: MediaType, hiddenSelectedCount: Int): String? =
+        if (type == MediaType.VIDEOS && hiddenSelectedCount > 0) {
+            "$hiddenSelectedCount selected album(s) without videos are hidden here. They stay selected for other Types."
+        } else null
+
     /** True when a card should be dimmed and flagged because nothing in it is eligible. Never for [MediaType.PHOTOS]. */
     fun isEmptyForType(type: MediaType, photos: Int, videos: Int): Boolean =
         type != MediaType.PHOTOS && eligibleCount(type, photos, videos) == 0

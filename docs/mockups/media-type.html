@@ -177,9 +177,11 @@
         const p = +a.dataset.p, v = +a.dataset.v;
         const c = m.count(p, v);
         const none = c.none;
+        // Type Videos lists only albums that have videos; the other Types dim empty albums instead.
+        a.style.display = (key === 'videos' && v === 0) ? 'none' : '';
         a.querySelector('.count').innerHTML = none ? '<span class="none">' + none + '</span>' : c.text;
-        a.classList.toggle('dim', !!none);
-        if (a.classList.contains('selected')) { picked++; items += key === 'photos' ? p : key === 'both' ? p + v : v; }
+        a.classList.toggle('dim', !!none && key !== 'videos');
+        if (a.classList.contains('selected') && a.style.display !== 'none') { picked++; items += key === 'photos' ? p : key === 'both' ? p + v : v; }
       });
       const unit = key === 'photos' ? 'pictures' : 'items';
       document.getElementById('railSummary').textContent = picked + ' albums · ' + items.toLocaleString() + ' ' + unit + ' · saved automatically';

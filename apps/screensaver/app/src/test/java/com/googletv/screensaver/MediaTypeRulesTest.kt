@@ -88,6 +88,33 @@ class MediaTypeRulesTest {
     }
 
     @Test
+    fun typeVideosListsOnlyAlbumsWithVideos() {
+        assertTrue(MediaTypeRules.showsAlbum(MediaType.VIDEOS, 300, 5))
+        assertTrue(MediaTypeRules.showsAlbum(MediaType.VIDEOS, 0, 1))
+        assertFalse(MediaTypeRules.showsAlbum(MediaType.VIDEOS, 300, 0))
+        assertFalse(MediaTypeRules.showsAlbum(MediaType.VIDEOS, 0, 0))
+        // Other Types list every album, empty ones included, exactly as before.
+        for (type in listOf(MediaType.PHOTOS, MediaType.PHOTOS_AND_VIDEOS)) {
+            assertTrue(MediaTypeRules.showsAlbum(type, 0, 0))
+            assertTrue(MediaTypeRules.showsAlbum(type, 300, 0))
+            assertTrue(MediaTypeRules.showsAlbum(type, 0, 5))
+        }
+    }
+
+    @Test
+    fun theFilterIsExplainedInTheSubtitleAndForHiddenSelections() {
+        assertEquals("  ·  Showing only albums with videos", MediaTypeRules.subtitleSuffix(MediaType.VIDEOS))
+        assertEquals("", MediaTypeRules.subtitleSuffix(MediaType.PHOTOS))
+        assertEquals("", MediaTypeRules.subtitleSuffix(MediaType.PHOTOS_AND_VIDEOS))
+        assertNull(MediaTypeRules.hiddenSelectionNote(MediaType.VIDEOS, 0))
+        assertNull(MediaTypeRules.hiddenSelectionNote(MediaType.PHOTOS, 4)) // nothing is hidden outside Type Videos
+        assertEquals(
+            "4 selected album(s) without videos are hidden here. They stay selected for other Types.",
+            MediaTypeRules.hiddenSelectionNote(MediaType.VIDEOS, 4),
+        )
+    }
+
+    @Test
     fun badgeOnlyWhenVideosAreInScopeAndPresent() {
         assertTrue(MediaTypeRules.showsVideoBadge(MediaType.PHOTOS_AND_VIDEOS, 1))
         assertTrue(MediaTypeRules.showsVideoBadge(MediaType.VIDEOS, 1))
