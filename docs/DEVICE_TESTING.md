@@ -470,4 +470,6 @@ Rule and calibration: [photo sources](PHOTO_SOURCES.md#excluding-screenshots-doc
 - **No crashes** (`AndroidRuntime` and `FATAL` lines: none).
 - **Restored:** `KEYCODE_WAKEUP`, timeout back to 600000, settings file and catalog byte-identical to the copies taken before the run, DreamService still selected. Scratch frames and settings copies deleted.
 
-**Not covered:** a longer run to estimate how often a document below 0.4 (like the flyer) or a never-analyzed photo gets through (1 in 45 frames across All and screensaver so far, small samples), photos newer than the catalog, and the build is still uncommitted.
+**Not covered:** a longer run to estimate how often a document below 0.4 (like the flyer) or a never-analyzed photo gets through (1 in 45 frames across All and screensaver so far, small samples), photos newer than the catalog.
+
+**Deployed (2026-10-18).** The change is commit `bc617ec`. From a clean tree, `cd apps/screensaver && JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` succeeded and `adb install -r app/build/outputs/apk/debug/app-debug.apk` returned `Success`. The settings screen shows `Build bc617ec8` with no `-dirty` suffix. The saved catalog (2,207,985 bytes) and settings survived the update, the DreamService is still selected, and the idle timeout is 600000 ms. There is no signed release build: the project has no signing configuration (and none belongs in Git), so the debug APK is what runs on the TV.
