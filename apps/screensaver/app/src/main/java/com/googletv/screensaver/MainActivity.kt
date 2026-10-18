@@ -42,16 +42,19 @@ class MainActivity : Activity() {
     private lateinit var smbMessage: TextView
     private lateinit var albumSummary: TextView
     private lateinit var albumError: TextView
+    private lateinit var typeNote: TextView
     private lateinit var settingsStatus: TextView
     private val choiceButtons = mutableMapOf<String, List<Button>>()
     private val albumExecutor = Executors.newSingleThreadExecutor()
     private var sourceMode = PhotoSourceMode.BUNDLED
     private var selectionMode = PhotoSelectionMode.ALL
+    private var mediaType = MediaType.default
     private var intervalPreset = IntervalPreset.default
     private var poolSize = PhotoPoolSize.default
     private var labelMode = PhotoLabelMode.default
     private var selectedAlbumIds = emptySet<String>()
     private var selectedAlbumPhotoCount = 0
+    private var selectedAlbumVideoCount = -1
     private var draftSmbConfig = com.googletv.screensaver.playback.SmbSourceConfig(
         "", SlideshowPreferences.DEFAULT_SMB_SHARE, SlideshowPreferences.DEFAULT_SMB_PATH,
     )
@@ -122,14 +125,14 @@ class MainActivity : Activity() {
     private fun buildScreen(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(48), dp(22), dp(48), dp(18))
+            setPadding(dp(48), dp(14), dp(48), dp(18))
             setBackgroundColor(Color.rgb(16, 24, 33))
         }
         root.addView(text(getString(R.string.app_name), 20f, true).apply {
             setTextColor(Color.rgb(150, 199, 236))
         })
         root.addView(text("Slideshow settings", 27f, true).apply {
-            setPadding(0, dp(3), 0, dp(8))
+            setPadding(0, dp(3), 0, dp(4))
         })
 
         settingsTable = LinearLayout(this).apply {
@@ -147,9 +150,15 @@ class MainActivity : Activity() {
         }
         root.addView(albumError)
         root.addView(smbMessage)
+        typeNote = text("", 13f, false).apply {
+            setTextColor(Color.rgb(150, 199, 236))
+            visibility = View.GONE
+            setPadding(0, dp(1), 0, dp(1))
+        }
+        root.addView(typeNote)
         settingsStatus = text("Changes take effect when saved.", 13f, false).apply {
             setTextColor(Color.rgb(170, 184, 199))
-            setPadding(0, dp(3), 0, dp(3))
+            setPadding(0, dp(1), 0, dp(1))
         }
         root.addView(settingsStatus)
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
@@ -209,7 +218,7 @@ class MainActivity : Activity() {
                 smbFields.firstOrNull()?.requestFocus()
             },
         ))
-        val photos = addChoiceRow("Photos", "photos", listOf(
+        val photos = addChoiceRow("Media", "photos", listOf(
             "All" to { selectionMode = PhotoSelectionMode.ALL; refreshSettingsControls() },
             "Choose Albums" to { openAlbumPicker() },
         ))
@@ -218,6 +227,10 @@ class MainActivity : Activity() {
             setPadding(dp(8), 0, 0, 0)
         }
         photos.second.addView(albumSummary)
+        addChoiceRow("Type", "type", MediaType.all.map { type -> type.label to {
+            mediaType = type
+            refreshSettingsControls()
+        } })
         addChoiceRow("Pool", "pool", PhotoPoolSize.all.map { it.label to {
             poolSize = it
             refreshSettingsControls()
@@ -263,7 +276,7 @@ class MainActivity : Activity() {
         }
         choiceButtons[key] = buttons
         row.addView(optionRow, LinearLayout.LayoutParams(0, -2, 1f))
-        settingsTable.addView(row, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(5) })
+        settingsTable.addView(row, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(4) })
         return row to optionRow
     }
 
@@ -275,14 +288,19 @@ class MainActivity : Activity() {
         }
         mark("source", if (sourceMode == PhotoSourceMode.BUNDLED) 0 else 1)
         mark("photos", if (selectionMode == PhotoSelectionMode.ALL) 0 else 1)
+        mark("type", MediaType.all.indexOf(mediaType).coerceAtLeast(0))
         mark("pool", PhotoPoolSize.all.indexOf(poolSize).coerceAtLeast(0))
         mark("interval", IntervalPreset.all.indexOfFirst { it.seconds == intervalPreset.seconds }.coerceAtLeast(0))
         mark("label", if (labelMode == PhotoLabelMode.NONE) 1 else 0)
         choiceButtons["pool"].orEmpty().forEach { it.isEnabled = selectionMode == PhotoSelectionMode.ALL }
         albumSummary.text = if (selectionMode == PhotoSelectionMode.ALBUMS) {
-            "${selectedAlbumIds.size} albums · $selectedAlbumPhotoCount photos"
+            MediaTypeRules.summaryText(mediaType, selectedAlbumIds.size, selectedAlbumPhotoCount, selectedAlbumVideoCount)
         } else ""
         albumSummary.visibility = if (selectionMode == PhotoSelectionMode.ALBUMS) View.VISIBLE else View.GONE
+        val note = MediaTypeRules.typeNote(mediaType)
+        // The second sentence goes away when video playback ships (milestone 4).
+        typeNote.text = note?.let { "$it Video playback isn't available in this build yet." }.orEmpty()
+        typeNote.visibility = if (note != null) View.VISIBLE else View.GONE
     }
 
     private fun focusChoice(key: String, index: Int) {
@@ -292,6 +310,7 @@ class MainActivity : Activity() {
     private fun restoreDraftFromPreferences() {
         sourceMode = preferences.photoSourceMode()
         selectionMode = preferences.photoSelectionMode()
+        mediaType = preferences.mediaType()
         intervalPreset = IntervalPreset.all.firstOrNull { it.seconds == preferences.intervalSeconds() } ?: IntervalPreset.default
         poolSize = preferences.photoPoolSize()
         labelMode = preferences.photoLabelMode().let {
@@ -299,6 +318,7 @@ class MainActivity : Activity() {
         }
         selectedAlbumIds = preferences.selectedAlbumIds()
         selectedAlbumPhotoCount = preferences.selectedAlbumPhotoCount()
+        selectedAlbumVideoCount = preferences.selectedAlbumVideoCount()
         draftSmbConfig = preferences.smbSourceConfig()
     }
 
@@ -317,11 +337,12 @@ class MainActivity : Activity() {
         return runCatching {
             preferences.setPhotoSourceMode(sourceMode)
             preferences.setPhotoSelectionMode(selectionMode)
+            preferences.setMediaType(mediaType)
             preferences.setInterval(intervalPreset)
             preferences.setPhotoPoolSize(poolSize)
             preferences.setPhotoLabelMode(labelMode)
             preferences.saveSmbSourceConfig(draftSmbConfig)
-            preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount)
+            preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount)
             settingsStatus.text = "Settings saved."
             true
         }.getOrElse {
@@ -478,7 +499,10 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         topLine.addView(text(getString(R.string.app_name), 18f, true), LinearLayout.LayoutParams(0, dp(28), 1f))
-        topLine.addView(text("PHOTO SOURCE · SMB SHARE", 12f, true).apply { setTextColor(Color.rgb(181, 193, 204)) })
+        topLine.addView(
+            text("PHOTO SOURCE · SMB SHARE" + if (mediaType.includesVideos) " · TYPE: ${mediaType.label.uppercase()}" else "", 12f, true)
+                .apply { setTextColor(Color.rgb(181, 193, 204)) },
+        )
         root.addView(topLine)
 
         val heading = LinearLayout(this).apply {
@@ -571,12 +595,18 @@ class MainActivity : Activity() {
             .flatMap { it.paths.asSequence() }
             .toSet()
             .size
+        fun videoCount(): Int = albums.asSequence()
+            .filter { it.id in staged }
+            .flatMap { album -> album.videos.asSequence().map { it.path } }
+            .toSet()
+            .size
         val total = text("", 22f, true)
         fun updateSelectionUi() {
             selectedAlbumIds = staged.toSet()
             selectedAlbumPhotoCount = photoCount()
+            selectedAlbumVideoCount = videoCount()
             selectionMode = PhotoSelectionMode.ALBUMS
-            preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount)
+            preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount)
             preferences.setPhotoSelectionMode(PhotoSelectionMode.ALBUMS)
             cards.forEach { (id, card) ->
                 val selected = id in staged
@@ -591,17 +621,19 @@ class MainActivity : Activity() {
                 card.contentDescription = "${albums.first { it.id == id }.title}, ${if (selected) "selected" else "not selected"}"
             }
             val unavailable = (staged - availableIds).size
-            val noPhotos = albums.count { it.id in staged && it.paths.isEmpty() }
+            val noItems = albums.count {
+                it.id in staged && MediaTypeRules.eligibleCount(mediaType, it.photoCount, it.videoCount) == 0
+            }
             val warning = when {
                 unavailable > 0 -> "$unavailable previously selected album(s) aren't in the current catalog. Their selection is preserved."
-                noPhotos > 0 -> "$noPhotos selected album(s) have no readable supported pictures. Keep the selection or choose other albums."
+                noItems > 0 -> MediaTypeRules.emptySelectionWarning(mediaType, noItems).orEmpty()
                 staged.isEmpty() -> "No albums selected. Choose one or more albums, or select All photos in settings."
                 else -> ""
             }
             notice.text = warning
             notice.visibility = if (warning.isNotEmpty()) View.VISIBLE else View.GONE
             removeUnavailable.visibility = if (unavailable > 0) View.VISIBLE else View.GONE
-            total.text = "${staged.size} albums  ·  ${photoCount()} pictures"
+            total.text = MediaTypeRules.totalText(mediaType, staged.size, photoCount(), videoCount())
         }
         fun persistStagedSelection() {
             updateSelectionUi()
@@ -642,7 +674,7 @@ class MainActivity : Activity() {
                 setPadding(dp(12), dp(8), dp(12), dp(10))
             }
             copy.addView(text(album.title, 14f, true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-            copy.addView(text("${album.paths.size} pictures", 12f, false).apply {
+            copy.addView(text(MediaTypeRules.cardCountText(mediaType, album.photoCount, album.videoCount), 12f, false).apply {
                 setTextColor(Color.rgb(225, 234, 241))
                 setPadding(0, dp(2), 0, 0)
             })
@@ -662,6 +694,13 @@ class MainActivity : Activity() {
             card.addView(check, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.TOP or Gravity.END).apply {
                 setMargins(0, dp(8), dp(8), 0)
             })
+            if (MediaTypeRules.showsVideoBadge(mediaType, album.videoCount)) {
+                card.addView(text("▶ video", 11f, true).apply {
+                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                    background = roundedBackground(0xCC0B141D.toInt(), Color.rgb(131, 149, 166), 999)
+                }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(8), dp(8), 0, 0) })
+            }
+            if (MediaTypeRules.isEmptyForType(mediaType, album.photoCount, album.videoCount)) card.alpha = 0.6f
             cards[album.id] = card
             coverViews[album.id] = cover
             checks[album.id] = check
@@ -827,6 +866,7 @@ class MainActivity : Activity() {
     private fun finishAlbumPicker() {
         selectedAlbumIds = preferences.selectedAlbumIds()
         selectedAlbumPhotoCount = preferences.selectedAlbumPhotoCount()
+        selectedAlbumVideoCount = preferences.selectedAlbumVideoCount()
         selectionMode = preferences.photoSelectionMode()
         closeAlbumPicker()
         albumError.visibility = View.GONE

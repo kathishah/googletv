@@ -1,13 +1,25 @@
 package com.googletv.screensaver.playback
 
 import android.content.Context
+import android.util.Log
+import com.googletv.screensaver.DreamPlan
+import com.googletv.screensaver.MediaTypeRules
 import com.googletv.screensaver.PhotoLabelMode
 import com.googletv.screensaver.PhotoSourceMode
 import com.googletv.screensaver.PhotoSelectionMode
 import com.googletv.screensaver.SlideshowPreferences
 
 object PhotoSourceFactory {
-    fun create(context: Context, preferences: SlideshowPreferences): PhotoSource {
+    /**
+     * [forDream] is true for the DreamService. The screensaver never plays videos: when the in-app
+     * Type includes videos it shows a random pool of [MediaTypeRules.DREAM_FALLBACK_POOL] photos from
+     * the whole library and ignores the saved albums and pool.
+     */
+    fun create(context: Context, preferences: SlideshowPreferences, forDream: Boolean = false): PhotoSource {
+        val randomPhotos = forDream && MediaTypeRules.dreamPlan(preferences.mediaType()) == DreamPlan.RANDOM_PHOTOS
+        if (randomPhotos && preferences.photoSourceMode() == PhotoSourceMode.SMB_GUEST) {
+            Log.i("PhotoSource", "Screensaver shows ${MediaTypeRules.DREAM_FALLBACK_POOL} random photos because Type includes videos")
+        }
         val metrics = context.resources.displayMetrics
         val placeNameLookup = if (preferences.photoLabelMode() == PhotoLabelMode.LOCATION_AND_DATE) {
             PlaceNameResolver(context.applicationContext)::lookup
@@ -26,13 +38,13 @@ object PhotoSourceFactory {
                 preferences.smbSourceConfig(),
                 metrics.widthPixels,
                 metrics.heightPixels,
-                preferences.photoPoolSize().count,
+                if (randomPhotos) MediaTypeRules.DREAM_FALLBACK_POOL else preferences.photoPoolSize().count,
                 preferences.photoLabelMode(),
                 placeNameLookup,
                 context.cacheDir,
                 catalogCacheDirectory = context.filesDir,
-                selectedAlbumIds = preferences.selectedAlbumIds(),
-                selectedAlbumMode = preferences.photoSelectionMode() == PhotoSelectionMode.ALBUMS,
+                selectedAlbumIds = if (randomPhotos) emptySet() else preferences.selectedAlbumIds(),
+                selectedAlbumMode = !randomPhotos && preferences.photoSelectionMode() == PhotoSelectionMode.ALBUMS,
             )
         }
     }

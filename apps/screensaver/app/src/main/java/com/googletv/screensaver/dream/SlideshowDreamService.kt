@@ -19,7 +19,7 @@ class SlideshowDreamService : DreamService() {
         slideshowView = SlideshowView(this)
         setContentView(slideshowView)
         player = SlideshowPlayer(
-            photoSource = PhotoSourceFactory.create(this, SlideshowPreferences(this)),
+            photoSource = PhotoSourceFactory.create(this, SlideshowPreferences(this), forDream = true),
             intervalMillis = SlideshowPreferences(this)::intervalMillis,
             showSlide = slideshowView::show,
             showLoading = slideshowView::showLoadingState,

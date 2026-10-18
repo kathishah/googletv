@@ -72,6 +72,12 @@ class SlideshowPreferences(context: Context) {
         preferences.edit().putString(KEY_PHOTO_SELECTION_MODE, mode.name).apply()
     }
 
+    fun mediaType(): MediaType = MediaType.parse(preferences.getString(KEY_MEDIA_TYPE, null))
+
+    fun setMediaType(type: MediaType) {
+        preferences.edit().putString(KEY_MEDIA_TYPE, type.name).apply()
+    }
+
     fun photoPoolSize(): PhotoPoolSize {
         val count = preferences.getInt(KEY_PHOTO_POOL_SIZE, PhotoPoolSize.default.count)
         return PhotoPoolSize.all.firstOrNull { it.count == count } ?: PhotoPoolSize.default
@@ -111,15 +117,21 @@ class SlideshowPreferences(context: Context) {
 
     fun selectedAlbumPhotoCount(): Int = preferences.getInt(KEY_ALBUM_PHOTO_COUNT, 0)
 
-    fun setAlbumSelection(ids: Set<String>, photoCount: Int) {
+    /** Distinct videos in the selected albums, or -1 when the selection predates video counts. */
+    fun selectedAlbumVideoCount(): Int = preferences.getInt(KEY_ALBUM_VIDEO_COUNT, -1)
+
+    /** Saves the album IDs with their distinct photo and video totals, which do not depend on [MediaType]. */
+    fun setAlbumSelection(ids: Set<String>, photoCount: Int, videoCount: Int) {
         preferences.edit().putStringSet(KEY_ALBUM_IDS, ids.toSet())
-            .putInt(KEY_ALBUM_PHOTO_COUNT, photoCount.coerceAtLeast(0)).apply()
+            .putInt(KEY_ALBUM_PHOTO_COUNT, photoCount.coerceAtLeast(0))
+            .putInt(KEY_ALBUM_VIDEO_COUNT, videoCount.coerceAtLeast(0)).apply()
     }
 
     companion object {
         private const val KEY_INTERVAL_SECONDS = "interval_seconds"
         private const val KEY_SOURCE_MODE = "photo_source_mode"
         private const val KEY_PHOTO_SELECTION_MODE = "photo_selection_mode"
+        private const val KEY_MEDIA_TYPE = "media_type"
         private const val KEY_PHOTO_POOL_SIZE = "photo_pool_size"
         private const val KEY_PHOTO_LABEL_MODE = "photo_label_mode"
         private const val KEY_SMB_HOST = "smb_host"
@@ -127,6 +139,7 @@ class SlideshowPreferences(context: Context) {
         private const val KEY_SMB_PATH = "smb_path"
         private const val KEY_ALBUM_IDS = "smb_album_ids"
         private const val KEY_ALBUM_PHOTO_COUNT = "smb_album_photo_count"
+        private const val KEY_ALBUM_VIDEO_COUNT = "smb_album_video_count"
         const val DEFAULT_SMB_SHARE = "Photos"
         const val DEFAULT_SMB_PATH = "Photos Library.photoslibrary/originals"
     }
