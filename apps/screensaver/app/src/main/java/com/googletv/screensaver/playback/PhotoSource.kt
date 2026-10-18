@@ -17,12 +17,18 @@ import java.util.Locale
 
 enum class SlideKind { PHOTO, VIDEO }
 
-/** A video slide's [id] is its SMB path; [video] carries the duration and size the player plans with. */
+/**
+ * A video slide's [id] is its SMB path; [video] carries the duration and size the player plans with.
+ * A photo slide with a [partner] is a pair: the slide's own photo is on the left, the [partner]'s on the
+ * right, and [look] (null = plain black) is the background behind both. Only portrait photos are paired.
+ */
 data class Slide(
     val id: String,
     val description: String,
     val kind: SlideKind = SlideKind.PHOTO,
     val video: VideoItem? = null,
+    val partner: Slide? = null,
+    val look: PairLook? = null,
 )
 
 /**
