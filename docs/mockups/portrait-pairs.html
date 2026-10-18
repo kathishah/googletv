@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portrait pairs mock</title>
+<style>
+  :root { --bg:#0f1720; --panel:#16202b; --text:#e8eef5; --muted:#93a3b5; --line:#2b3a4a; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px 48px; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; }
+  main { max-width: 1680px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 28px 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 78ch; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:20px; }
+  figure { margin:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  figcaption { margin-top:10px; font-size:14px; }
+  figcaption b { display:block; font-size:15px; }
+  figcaption span { color: var(--muted); }
+
+  /* A 16:9 screen drawn to scale: every size is a share of 1920 x 1080 (100cqw = 1920 px). */
+  .screen { position:relative; container-type:inline-size; width:100%; aspect-ratio:16/9; background:#000; border-radius:4px; overflow:hidden; outline:1px solid var(--line); }
+  .bg { position:absolute; inset:0; }
+  .photo { position:absolute; top:0; height:100%; display:flex; align-items:flex-end; background: linear-gradient(165deg, var(--p1), var(--p2)); }
+  .tag { position:absolute; top:.6cqw; left:.8cqw; font-size:1.1cqw; opacity:.85; }
+  .label { margin:0 0 .7cqw .9cqw; font-size:1.05cqw; color:rgba(255,255,255,.85); text-shadow:0 1px 2px rgba(0,0,0,.45); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:calc(100% - 1.2cqw); }
+  .bad .screen { outline-color:#8a4b4b; }
+  .guide .screen::after { content:""; position:absolute; inset:0; pointer-events:none; }
+
+  /* Background styles. They fill the whole screen behind the photos, so the pattern shows only in the
+     three slices (left, middle, right). Pinstripes and lattice take their tones from the photos; the two
+     frame styles use fixed material tones. Frame effects hang off the photos' edges and are clipped at the
+     top and bottom of the screen, so they only show beside the photos. */
+  .stripes { background:
+      repeating-linear-gradient(90deg, transparent 0 var(--gap,.42cqw), var(--line) var(--gap,.42cqw) var(--pitch,.52cqw)),
+      var(--base); }
+  .lattice { background:
+      repeating-linear-gradient(45deg, transparent 0 var(--gap,1.3cqw), var(--line) var(--gap,1.3cqw) var(--pitch,1.38cqw)),
+      repeating-linear-gradient(-45deg, transparent 0 var(--gap,1.3cqw), var(--line) var(--gap,1.3cqw) var(--pitch,1.38cqw)),
+      var(--base); }
+  .band { position:absolute; top:0; height:100%; }
+  .strip { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .strip .cell { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px; font-size:12px; color:var(--muted); }
+  .strip .cell .screen { margin-bottom:5px; }
+  .strip .tag, .strip .label { display:none; }
+
+  /* Walnut diptych frame: vertical grain, a dark rebate and a light bevel line beside each photo. */
+  .wood { background:
+      repeating-linear-gradient(90.6deg, rgba(0,0,0,.14) 0 .11cqw, transparent .11cqw .47cqw),
+      repeating-linear-gradient(89.7deg, rgba(255,235,205,.07) 0 .22cqw, transparent .22cqw .83cqw),
+      repeating-linear-gradient(90.2deg, rgba(0,0,0,.10) 0 .06cqw, transparent .06cqw 1.37cqw),
+      linear-gradient(90deg, var(--w1,#5b3b24), var(--w2,#704a2c) 50%, var(--w1,#5b3b24)); }
+  .wood-photo { box-shadow:
+      0 0 0 .3cqw #24140a,
+      0 0 0 .55cqw rgba(255,226,180,.30),
+      0 0 1.6cqw .5cqw rgba(0,0,0,.55); }
+
+  /* Brass fillet mat: a dark linen mat with two thin brass lines around each photo. */
+  .linen { background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 .12cqw, transparent .12cqw .4cqw),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 .12cqw, transparent .12cqw .4cqw),
+      var(--mat,#1b1814); }
+  .brass-photo { box-shadow:
+      0 0 0 .22cqw var(--f1,#c9a95f),
+      0 0 0 .62cqw var(--mat,#1b1814),
+      0 0 0 .78cqw var(--f2,#9c8044),
+      0 0 1.2cqw .9cqw rgba(0,0,0,.4); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Portrait pairs</h1>
+  <p class="lead">A 1920 × 1080 screen, drawn to scale. Photos are never cropped. The space the two photos leave free is divided into <b>three equal slices: left, middle, and right</b>, and a pattern or frame behind the photos shows through all three. For two 3:4 photos the free space is 300 px, so each slice is 100 px. No black is left on the screen.</p>
+
+  <h2>Where it starts</h2>
+  <div class="grid">
+    <figure class="bad">
+      <div class="screen">
+        <div class="photo" style="left:28.125%; width:42.1875%; --p1:#3d6f9e; --p2:#1d3550;"><span class="tag">3:4</span><span class="label">Sedona · Dec 17, 2025</span></div>
+      </div>
+      <figcaption><b>Today: one portrait photo</b><span>810 px wide, 42% of the screen, 555 px of black on each side.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="screen">
+        <div class="photo" style="left:7.40%; width:42.1875%; --p1:#3d6f9e; --p2:#1d3550;"><span class="tag">3:4</span><span class="label">Sedona · Dec 17, 2025</span></div>
+        <div class="photo" style="left:50.4%; width:42.1875%; --p1:#9e6f3d; --p2:#503419;"><span class="tag">3:4</span><span class="label">Sedona · Dec 17, 2025</span></div>
+      </div>
+      <figcaption><b>Pair on black</b><span>84% of the screen; 142 px of black on each outer side and a 16 px gap.</span></figcaption>
+    </figure>
+  </div>
+
+  <h2>Three equal slices: 3:4 + 3:4</h2>
+  <p class="lead">Left slice 100 px, photo 810 px, middle slice 100 px, photo 810 px, right slice 100 px. Styles 1 and 2 are a continuous pattern behind both photos; styles 3 and 4 treat the screen as a frame holding two pictures side by side (a diptych). The photos already run from the top to the bottom of the screen, so a frame can only show at the sides and in the middle. One style is picked at random per pair.</p>
+  <div class="grid">
+
+    <figure>
+      <div class="screen">
+        <div class="bg stripes" style="--base:#241a33; --line:#3b2d52;"></div>
+        <div class="photo" style="left:5.2083%; width:42.1875%; --p1:#7a5f9e; --p2:#2e2145;"><span class="tag">3:4</span><span class="label">Athens · Jun 3, 2026</span></div>
+        <div class="photo" style="left:52.6042%; width:42.1875%; --p1:#9e8f3d; --p2:#4d4519;"><span class="tag">3:4</span><span class="label">Athens · Jun 3, 2026</span></div>
+      </div>
+      <figcaption><b>1. Pinstripes</b><span>Thin vertical lines, 10 px apart, a lighter tone on a dark tone mixed from the two photos, running behind both.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen">
+        <div class="bg lattice" style="--base:#1a2c33; --line:#2c4752;"></div>
+        <div class="photo" style="left:5.2083%; width:42.1875%; --p1:#3d8f93; --p2:#16393b;"><span class="tag">3:4</span><span class="label">Maui · Feb 20, 2024</span></div>
+        <div class="photo" style="left:52.6042%; width:42.1875%; --p1:#8f4a6a; --p2:#3b1a2a;"><span class="tag">3:4</span><span class="label">Maui · Feb 21, 2024</span></div>
+      </div>
+      <figcaption><b>2. Diamond lattice</b><span>A fine diagonal grid in two quiet tones from the photos, like a gallery wall covering.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen">
+        <div class="bg wood"></div>
+        <div class="photo wood-photo" style="left:5.2083%; width:42.1875%; --p1:#3d6f9e; --p2:#1d3550;"><span class="tag">3:4</span><span class="label">Sedona · Dec 17, 2025</span></div>
+        <div class="photo wood-photo" style="left:52.6042%; width:42.1875%; --p1:#6d8f5a; --p2:#2c4224;"><span class="tag">3:4</span><span class="label">Muir Woods · Mar 2, 2026</span></div>
+      </div>
+      <figcaption><b>3. Walnut frame</b><span>Vertical wood grain with a dark rebate and a pale bevel line beside each photo and a soft shadow, so the two pictures look set into one wooden diptych. Fixed walnut tones (an oak variant is possible).</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen">
+        <div class="bg linen"></div>
+        <div class="photo brass-photo" style="left:5.2083%; width:42.1875%; --p1:#b0745a; --p2:#5a2f23;"><span class="tag">3:4</span><span class="label">Santa Cruz · Jul 9, 2025</span></div>
+        <div class="photo brass-photo" style="left:52.6042%; width:42.1875%; --p1:#4a7f6a; --p2:#1f3b30;"><span class="tag">3:4</span><span class="label">Carmel · Aug 8, 2026</span></div>
+      </div>
+      <figcaption><b>4. Brass fillet mat</b><span>A dark linen mat with two thin brass lines around each photo, the way a gallery mounts a print. Fixed tones.</span></figcaption>
+    </figure>
+
+  </div>
+
+  <h2>Variety inside each style</h2>
+  <p class="lead">Each style has a few variants, picked at random along with the style. Examples: oak instead of walnut, silver instead of brass on a navy mat, wider pinstripes, a larger lattice.</p>
+  <div class="grid">
+    <figure>
+      <div class="screen">
+        <div class="bg wood" style="--w1:#b58a55; --w2:#cfa56d;"></div>
+        <div class="photo wood-photo" style="left:5.2083%; width:42.1875%; --p1:#3d8f93; --p2:#16393b;"><span class="tag">3:4</span><span class="label">Maui · Feb 20, 2024</span></div>
+        <div class="photo wood-photo" style="left:52.6042%; width:42.1875%; --p1:#b0745a; --p2:#5a2f23;"><span class="tag">3:4</span><span class="label">Maui · Feb 21, 2024</span></div>
+      </div>
+      <figcaption><b>Oak frame</b><span>The walnut frame in a lighter wood.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="screen">
+        <div class="bg linen" style="--mat:#14202e;"></div>
+        <div class="photo brass-photo" style="left:5.2083%; width:42.1875%; --f1:#cfd6dd; --f2:#8d98a4; --mat:#14202e; --p1:#7a5f9e; --p2:#2e2145;"><span class="tag">3:4</span><span class="label">Athens · Jun 3, 2026</span></div>
+        <div class="photo brass-photo" style="left:52.6042%; width:42.1875%; --f1:#cfd6dd; --f2:#8d98a4; --mat:#14202e; --p1:#9e8f3d; --p2:#4d4519;"><span class="tag">3:4</span><span class="label">Athens · Jun 3, 2026</span></div>
+      </div>
+      <figcaption><b>Silver fillet on navy</b><span>The mat in another color with silver lines.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="screen">
+        <div class="bg stripes" style="--base:#10292c; --line:#2a5459; --gap:.62cqw; --pitch:.74cqw;"></div>
+        <div class="photo" style="left:5.2083%; width:42.1875%; --p1:#3d6f9e; --p2:#1d3550;"><span class="tag">3:4</span><span class="label">Sedona · Dec 17, 2025</span></div>
+        <div class="photo" style="left:52.6042%; width:42.1875%; --p1:#6d8f5a; --p2:#2c4224;"><span class="tag">3:4</span><span class="label">Muir Woods · Mar 2, 2026</span></div>
+      </div>
+      <figcaption><b>Wide pinstripes</b><span>14 px pitch instead of 10, in teal tones.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="screen">
+        <div class="bg lattice" style="--base:#2a1c1c; --line:#4a3232; --gap:1.84cqw; --pitch:1.92cqw;"></div>
+        <div class="photo" style="left:5.2083%; width:42.1875%; --p1:#4a7f6a; --p2:#1f3b30;"><span class="tag">3:4</span><span class="label">Carmel · Aug 8, 2026</span></div>
+        <div class="photo" style="left:52.6042%; width:42.1875%; --p1:#8f6a4a; --p2:#3b2a1d;"><span class="tag">3:4</span><span class="label">Carmel · Aug 8, 2026</span></div>
+      </div>
+      <figcaption><b>Large lattice</b><span>Diamonds about 36 px across, in warm tones.</span></figcaption>
+    </figure>
+  </div>
+
+  <h2>A stretch of slides</h2>
+  <p class="lead">Not every portrait is paired. Here eight slides in a row: landscape photos stay full screen, some portraits are paired (each with its own random style), and some portraits stay alone on black. About 60% of portrait photos are paired in this plan; which ones, and with which partner and style, is random each time.</p>
+  <div class="strip">
+    <div class="cell"><div class="screen"><div class="photo" style="left:12.5%; width:75%; --p1:#4a7f6a; --p2:#1f3b30;"></div></div>landscape, alone</div>
+    <div class="cell"><div class="screen"><div class="bg wood"></div><div class="photo wood-photo" style="left:5.2083%; width:42.1875%; --p1:#3d6f9e; --p2:#1d3550;"></div><div class="photo wood-photo" style="left:52.6042%; width:42.1875%; --p1:#6d8f5a; --p2:#2c4224;"></div></div>pair: walnut frame</div>
+    <div class="cell"><div class="screen"><div class="photo" style="left:12.5%; width:75%; --p1:#8f6a4a; --p2:#3b2a1d;"></div></div>landscape, alone</div>
+    <div class="cell"><div class="screen"><div class="photo" style="left:28.125%; width:42.1875%; --p1:#b0745a; --p2:#5a2f23;"></div></div>portrait, alone (not paired this time)</div>
+    <div class="cell"><div class="screen"><div class="photo" style="left:12.5%; width:75%; --p1:#3d8f93; --p2:#16393b;"></div></div>landscape, alone</div>
+    <div class="cell"><div class="screen"><div class="bg lattice" style="--base:#1a2c33; --line:#2c4752;"></div><div class="photo" style="left:5.2083%; width:42.1875%; --p1:#3d8f93; --p2:#16393b;"></div><div class="photo" style="left:52.6042%; width:42.1875%; --p1:#8f4a6a; --p2:#3b1a2a;"></div></div>pair: diamond lattice</div>
+    <div class="cell"><div class="screen"><div class="photo" style="left:12.5%; width:75%; --p1:#7a5f9e; --p2:#2e2145;"></div></div>landscape, alone</div>
+    <div class="cell"><div class="screen"><div class="bg linen" style="--mat:#14202e;"></div><div class="photo brass-photo" style="left:5.2083%; width:42.1875%; --f1:#cfd6dd; --f2:#8d98a4; --mat:#14202e; --p1:#7a5f9e; --p2:#2e2145;"></div><div class="photo brass-photo" style="left:52.6042%; width:42.1875%; --f1:#cfd6dd; --f2:#8d98a4; --mat:#14202e; --p1:#9e8f3d; --p2:#4d4519;"></div></div>pair: silver mat</div>
+  </div>
+
+  <h2>Other shapes: the free space is still split in three</h2>
+  <div class="grid">
+    <figure>
+      <div class="screen">
+        <div class="bg wood"></div>
+        <div class="photo wood-photo" style="left:6.7708%; width:42.1875%; --p1:#3d6f9e; --p2:#1d3550;"><span class="tag">3:4</span><span class="label">Sedona · Dec 17, 2025</span></div>
+        <div class="photo wood-photo" style="left:55.7292%; width:37.5%; --p1:#9e6f3d; --p2:#503419;"><span class="tag">2:3</span><span class="label">Athens · Jun 3, 2026</span></div>
+      </div>
+      <figcaption><b>3:4 + 2:3 in the walnut frame</b><span>Photos 810 and 720 px; free space 390 px, so three slices of 130 px.</span></figcaption>
+    </figure>
+    <figure>
+      <div class="screen">
+        <div class="bg linen"></div>
+        <div class="photo brass-photo" style="left:12.2396%; width:31.6406%; --p1:#4a7f6a; --p2:#1f3b30;"><span class="tag">9:16</span><span class="label">Carmel · Aug 8, 2026</span></div>
+        <div class="photo brass-photo" style="left:56.1198%; width:31.6406%; --p1:#8f6a4a; --p2:#3b2a1d;"><span class="tag">9:16</span><span class="label">Carmel · Aug 8, 2026</span></div>
+      </div>
+      <figcaption><b>9:16 + 9:16 on the brass mat</b><span>The narrowest photos: free space 705 px, slices of 235 px. No special case is needed.</span></figcaption>
+    </figure>
+    <figure class="bad">
+      <div class="screen">
+        <div class="photo" style="left:12.5%; width:75%; --p1:#4a7f6a; --p2:#1f3b30;"><span class="tag">4:3 landscape</span><span class="label">Carmel · Aug 8, 2026</span></div>
+      </div>
+      <figcaption><b>Landscape photo: unchanged</b><span>Still full screen, one at a time, with black at the sides as today. Only pairs get a pattern.</span></figcaption>
+    </figure>
+  </div>
+</main>
+</body>
+</html>
