@@ -101,11 +101,11 @@
         <div class="settings-table" role="table" aria-label="Slideshow settings">
           <div class="table-row"><div class="setting-name">Photo source</div><div class="choice-set"><button class="choice">Sample pics</button><button class="choice selected">SMB share</button><button class="choice">SMB settings ›</button></div></div>
           <div class="table-row"><div class="setting-name">Media</div><div class="choice-set"><button class="choice selected">All</button><button class="choice">Choose Albums</button></div></div>
-          <div class="table-row new"><div class="setting-name">Type <span class="note">new</span></div><div class="choice-set" id="mediaChoices">
+          <div class="table-row"><div class="setting-name">Type</div><div class="choice-set" id="mediaChoices">
             <button class="choice selected" data-mode="photos">Photos</button>
             <button class="choice" data-mode="both">Photos + Videos</button>
             <button class="choice" data-mode="videos">Videos</button>
-            <span class="note" id="mediaNote">Today's behavior.</span></div></div>
+            <span class="note" id="mediaNote"></span></div></div>
           <div class="table-row"><div class="setting-name">Pool</div><div class="choice-set"><button class="choice">100</button><button class="choice selected">250</button><button class="choice">500</button><button class="choice">1,000</button><span class="note" id="poolNote">Only used for All</span></div></div>
           <div class="table-row"><div class="setting-name">Interval</div><div class="choice-set"><button class="choice">10 secs</button><button class="choice selected">30 secs</button><button class="choice">1 min</button><button class="choice">5 min</button><button class="choice">15 min</button><span class="note" id="intervalNote">Photos stay this long.</span></div></div>
           <div class="table-row"><div class="setting-name">Label</div><div class="choice-set"><button class="choice selected">Location + date</button><button class="choice">None</button><span class="note" id="labelNote"></span></div></div>
@@ -157,7 +157,7 @@
   </main>
   <script>
     const modes = {
-      photos: { note: "Today's behavior.", pool: "Only used for All", interval: "Photos stay this long.", label: "", status: "Photos only", count: (p, v) => ({ text: p + " photos", none: p === 0 && "No photos" }) },
+      photos: { note: "", pool: "Only used for All", interval: "Photos stay this long.", label: "", status: "Photos only", count: (p, v) => ({ text: p + " photos", none: p === 0 && "No photos" }) },
       both: { note: "Videos play to the end, up to 60 s.", pool: "Counts photos and videos. Only used for All", interval: "Photos stay this long; videos play to the end.", label: "Videos use date and place from the clip when present.", status: "Photos + videos", count: (p, v) => ({ text: p + " photos · " + v + " videos" }) },
       videos: { note: "Videos only.", pool: "Counts videos. Only used for All", interval: "Not used: each video plays to the end.", label: "Videos use date and place from the clip when present.", status: "Videos", count: (p, v) => ({ text: v + " videos", none: v === 0 && "No videos" }) },
     };
