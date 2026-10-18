@@ -138,3 +138,7 @@ Input for the media-type feature ([roadmap item 9](ROADMAP.md)). Counts come fro
 - **Duration:** median 31.6 s, 90th percentile 110 s, 99th percentile 500 s, longest 2,994 s; 52.6 hours in total. 1,590 are under 30 s, 2,543 are 60 s or shorter, and 27 are over 10 minutes.
 - **Flags:** 632 are marked HDR (type 5); in the sample these were HLG with Dolby Vision metadata. 653 carry subtype codes 100–103 (not mapped to Photos' names; the sample included 120 and 240 fps clips).
 - **Sample formats:** H.264 14, HEVC 8 (4 Main 10 HLG with Dolby Vision), Motion JPEG 4, MPEG-4 Part 2 2. Audio: AAC 20 (one HE-AAC), PCM 4, AMR-NB 1, none 3. Frame rates from 14 to 240 fps; 6 clips carry rotation metadata (portrait). Video bitrate ranged from 0.43 to 70.8 Mbps with a median of 7.7 Mbps.
+
+### Video permissions (2026-10-17)
+
+`make_photos_readable.sh` handles only photo extensions (jpg, jpeg, png, webp, heic, heif), so videos keep the owner-only (`0600`) mode the Photos library gives them. In the 28-video sample from the clone, 8 were world-readable and 20 were owner-only. Among the 400 highest-bitrate videos of 5–60 s, 138 were readable and 250 were owner-only; every clip above 18.4 Mbps in that set was owner-only, including all 4K and slow-motion files. Until videos are made readable, Guest can play only the older minority. Making them readable extends the accepted consequence in [product](PRODUCT.md) (any account or LAN device that can reach the Guest share can read them) from photos to videos, so it needs a recorded product decision before the script changes.
