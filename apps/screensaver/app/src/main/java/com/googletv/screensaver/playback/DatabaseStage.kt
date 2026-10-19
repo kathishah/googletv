@@ -2,11 +2,13 @@ package com.googletv.screensaver.playback
 
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.Properties
 
 internal enum class DatabaseFile(val localName: String) {
@@ -35,9 +37,11 @@ internal data class SyncResult(
     val localWalBytes: Long,
     val databaseModifiedMillis: Long,
     val walModifiedMillis: Long?,
+    val snapshotIdentity: String,
+    private val sameCommittedSnapshot: Boolean,
 ) {
-    /** Nothing on the share differs from the staged copy, so a catalog built from it is still current. */
-    val unchanged: Boolean get() = reusedDatabase && databaseBytesFetched == 0L && walBytesFetched == 0L
+    /** The database and committed WAL prefix match the snapshot used for the saved catalog. */
+    val unchanged: Boolean get() = sameCommittedSnapshot
 }
 
 /**
@@ -95,6 +99,7 @@ internal class DatabaseStage(private val directory: File) {
             reuseDatabase && wal != null && walHeader != null &&
             prior.walHeaderHex == hex(walHeader) && prior.walCommitted >= WalFrameScanner.WAL_HEADER_BYTES &&
             prior.walCommitted <= wal.size && walFile.length() == prior.walCommitted &&
+            (wal.size != prior.walCommitted || wal.modifiedMillis == prior.walModified) &&
             timings.time("wal_verify") { tailMatches(remote, walHeader, prior.walCommitted) }
         ) prior.walCommitted else 0L
 
@@ -139,7 +144,15 @@ internal class DatabaseStage(private val directory: File) {
                 }
             }
             progress(total, total)
-            saveState(SyncState(database.size, database.modifiedMillis, walHeader?.let(::hex).orEmpty(), committed, wal?.modifiedMillis ?: 0L))
+            val snapshotIdentity = snapshotIdentity(committed)
+            saveState(SyncState(
+                database.size,
+                database.modifiedMillis,
+                walHeader?.let(::hex).orEmpty(),
+                committed,
+                wal?.modifiedMillis ?: 0L,
+                snapshotIdentity,
+            ))
             return SyncResult(
                 databaseFile = databaseFile,
                 databaseBytesFetched = databaseFetched,
@@ -149,6 +162,8 @@ internal class DatabaseStage(private val directory: File) {
                 localWalBytes = committed,
                 databaseModifiedMillis = database.modifiedMillis,
                 walModifiedMillis = wal?.modifiedMillis,
+                snapshotIdentity = snapshotIdentity,
+                sameCommittedSnapshot = prior?.snapshotIdentity == snapshotIdentity,
             )
         } catch (error: Throwable) {
             rollback?.let { rollbackAppendIfSafe(remote, it) }
@@ -276,6 +291,7 @@ internal class DatabaseStage(private val directory: File) {
         val walHeaderHex: String,
         val walCommitted: Long,
         val walModified: Long,
+        val snapshotIdentity: String,
     )
 
     private fun loadState(): SyncState? = runCatching {
@@ -288,6 +304,7 @@ internal class DatabaseStage(private val directory: File) {
             properties.getProperty("walHeader").orEmpty(),
             properties.getProperty("walCommitted").toLong(),
             properties.getProperty("walModified").toLong(),
+            properties.getProperty("snapshotIdentity").also { require(!it.isNullOrBlank()) },
         )
     }.getOrNull()
 
@@ -299,6 +316,7 @@ internal class DatabaseStage(private val directory: File) {
             setProperty("walHeader", state.walHeaderHex)
             setProperty("walCommitted", state.walCommitted.toString())
             setProperty("walModified", state.walModified.toString())
+            setProperty("snapshotIdentity", state.snapshotIdentity)
         }
         val temporary = File(directory, "$STATE_FILE.tmp")
         try {
@@ -319,9 +337,34 @@ internal class DatabaseStage(private val directory: File) {
 
     private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
+    /** Hash the exact local SQLite snapshot that the catalog query will read. */
+    private fun snapshotIdentity(committedWalBytes: Long): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun updateFile(file: File, length: Long) {
+            digest.update(byteArrayOf(0))
+            digest.update(length.toString().toByteArray(Charsets.US_ASCII))
+            digest.update(byteArrayOf(0))
+            file.inputStream().use { input ->
+                val buffer = ByteArray(BUFFER_BYTES)
+                var remaining = length
+                while (remaining > 0L) {
+                    val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (count <= 0) throw IOException("Staged snapshot ended early")
+                    digest.update(buffer, 0, count)
+                    remaining -= count
+                }
+            }
+        }
+        updateFile(databaseFile, databaseFile.length())
+        digest.update(byteArrayOf(1))
+        if (committedWalBytes > 0L) updateFile(walFile, committedWalBytes)
+        else digest.update(byteArrayOf(0))
+        return hex(digest.digest())
+    }
+
     private companion object {
         const val STATE_FILE = "sync-state.properties"
-        const val STATE_VERSION = "1"
+        const val STATE_VERSION = "2"
         const val BUFFER_BYTES = 1024 * 1024
         val LOCK = Any()
     }

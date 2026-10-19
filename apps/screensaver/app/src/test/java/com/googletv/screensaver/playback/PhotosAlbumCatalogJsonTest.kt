@@ -24,6 +24,7 @@ class PhotosAlbumCatalogJsonTest {
         ),
         createdAtMillis = 1_700_000_000_000L,
         sourceModifiedMillis = 1_700_000_100_000L,
+        sourceSnapshotIdentity = "snapshot-identity",
         videos = listOf(VideoItem("0/c.mov", 31.633, 31_000_000L), VideoItem("9/d.mp4", 4.0, 9_000_000L)),
         excludedPaths = linkedSetOf("0/shot.png", "1/receipt.heic"),
         portraitPaths = linkedSetOf("0/a.jpg", "2/tall.heic"),
@@ -53,13 +54,18 @@ class PhotosAlbumCatalogJsonTest {
     }
 
     @Test
+    fun theSnapshotIdentityIsRequired() {
+        assertRejected(json { it.remove("sourceSnapshotIdentity") })
+    }
+
+    @Test
     fun version1CatalogsAreRejectedSoTheyGetRebuilt() {
         assertRejected(json { it.put("version", 1) })
         assertRejected(json { it.put("version", 2) }) // version 2 listed shared-album videos that cannot play
         assertRejected(json { it.put("version", 3) }) // version 3 had no exclusion list
         assertRejected(json { it.put("version", 4) }) // version 4 had no portrait list
         assertRejected(json { it.put("version", 5) }) // version 5 excluded only active classified assets
-        assertEquals(6, PhotosAlbumCatalog.VERSION)
+        assertEquals(7, PhotosAlbumCatalog.VERSION)
     }
 
     @Test

@@ -57,6 +57,8 @@ data class AlbumIndex(
     val createdAtMillis: Long = System.currentTimeMillis(),
     /** Newest modification time of the Photos database files the catalog was built from. */
     val sourceModifiedMillis: Long? = null,
+    /** Fingerprint of the exact database and committed WAL prefix used to build this catalog. */
+    val sourceSnapshotIdentity: String? = null,
     /** Every active, non-hidden video in the library, whether or not it is in an album. */
     val videos: List<VideoItem> = emptyList(),
     /** Photos the Photos app classified as screenshots, documents, or receipts; relative to `originals`. */
@@ -259,11 +261,15 @@ class SmbGuestPhotoSource(
                 val sourceModified = maxOf(synced.databaseModifiedMillis, synced.walModifiedMillis ?: 0L)
                 if (synced.unchanged) {
                     val current = timings.time("catalog_read") { PhotosAlbumCatalog.read(cacheFile) }
-                        ?.takeIf { it.sourceModifiedMillis == sourceModified }
+                        ?.takeIf { it.sourceSnapshotIdentity == synced.snapshotIdentity }
                     if (current != null) {
+                        val currentSource = current.copy(sourceModifiedMillis = sourceModified)
+                        if (currentSource.sourceModifiedMillis != current.sourceModifiedMillis) {
+                            timings.time("catalog_write") { PhotosAlbumCatalog.write(cacheFile, currentSource) }
+                        }
                         progress(AlbumCatalogProgress("The Photos library has not changed since the saved catalog"))
                         Log.i(LOG_TAG, "Album catalog refresh: library unchanged, kept the saved catalog | ${timings.summary()}")
-                        return@withExclusiveAccess current
+                        return@withExclusiveAccess currentSource
                     }
                 }
                 timings.time("prepare_query") { stage.prepareForQuery() }
@@ -274,7 +280,7 @@ class SmbGuestPhotoSource(
                     stage.clear()
                     throw error
                 }
-                val index = built.copy(sourceModifiedMillis = sourceModified)
+                val index = built.copy(sourceModifiedMillis = sourceModified, sourceSnapshotIdentity = synced.snapshotIdentity)
                 progress(AlbumCatalogProgress("Saving the catalog on this TV"))
                 timings.time("catalog_write") { PhotosAlbumCatalog.write(cacheFile, index) }
                 timings.addBytes("catalog_write", cacheFile.length())

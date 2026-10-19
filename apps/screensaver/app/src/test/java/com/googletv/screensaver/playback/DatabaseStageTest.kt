@@ -59,6 +59,44 @@ class DatabaseStageTest {
     }
 
     @Test
+    fun repeatedUncommittedWalTailDoesNotChangeCommittedSnapshotIdentity() {
+        val committed = WalBuilder.wal(header, WalBuilder.frame(1, 1))
+        val remote = FakeRemote(database(1), 100L, committed, 200L)
+        sync(remote)
+
+        val uncommittedTail = WalBuilder.wal(committed, WalBuilder.frame(2, 0))
+        remote.wal = uncommittedTail
+        remote.walModified = 300L
+        val firstTailRefresh = sync(remote)
+        assertTrue(firstTailRefresh.unchanged)
+        assertEquals(WalBuilder.FRAME_BYTES.toLong(), firstTailRefresh.walBytesFetched)
+
+        remote.served.clear()
+        val repeatedTailRefresh = sync(remote)
+        assertTrue(repeatedTailRefresh.unchanged)
+        assertEquals(WalBuilder.FRAME_BYTES.toLong(), repeatedTailRefresh.walBytesFetched)
+        assertEquals(committed.size.toLong(), repeatedTailRefresh.localWalBytes)
+    }
+
+    @Test
+    fun sameLengthWalReplacementWithNewModificationTimeChangesSnapshotIdentity() {
+        val original = WalBuilder.wal(header, WalBuilder.frame(1, 1, fill = 11))
+        val remote = FakeRemote(database(1), 100L, original, 200L)
+        sync(remote)
+
+        val replacement = WalBuilder.wal(header, WalBuilder.frame(1, 1, fill = 99))
+        assertEquals(original.size, replacement.size)
+        remote.wal = replacement
+        remote.walModified = 201L
+        remote.served.clear()
+        val result = sync(remote)
+
+        assertFalse(result.unchanged)
+        assertEquals(0L, result.walResumedFrom)
+        assertArrayEquals(replacement, localWal())
+    }
+
+    @Test
     fun appendedFramesAreTheOnlyWalBytesFetched() {
         val first = WalBuilder.wal(header, WalBuilder.frame(1, 1), WalBuilder.frame(2, 2))
         val remote = FakeRemote(database(1), 100L, first, 200L)

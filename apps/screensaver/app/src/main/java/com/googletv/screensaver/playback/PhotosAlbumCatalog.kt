@@ -22,7 +22,8 @@ internal object PhotosAlbumCatalog {
     // receipts), and drops them from every album's `paths`.
     // Version 5 adds `portrait`, the photos whose displayed shape allows pairing two on one slide.
     // Version 6 retains exclusions for trashed assets because their originals can remain on disk.
-    internal const val VERSION = 6
+    // Version 7 binds a saved catalog to the exact committed database snapshot it was built from.
+    internal const val VERSION = 7
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
 
     /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
@@ -79,7 +80,15 @@ internal object PhotosAlbumCatalog {
             val path = portraitArray.getString(index)
             require(CatalogPaths.isSafePhotoPath(path) && portrait.add(path))
         }
-        return AlbumIndex(albums, createdAt, root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 }, libraryVideos, excluded, portrait)
+        return AlbumIndex(
+            albums = albums,
+            createdAtMillis = createdAt,
+            sourceModifiedMillis = root.optLong("sourceModifiedAt", -1L).takeIf { it > 0 },
+            sourceSnapshotIdentity = root.getString("sourceSnapshotIdentity").also { require(it.isNotBlank()) },
+            videos = libraryVideos,
+            excludedPaths = excluded,
+            portraitPaths = portrait,
+        )
     }
 
     private fun readVideos(array: JSONArray): List<VideoItem> {
@@ -255,6 +264,7 @@ internal object PhotosAlbumCatalog {
             .put("pathRoot", PATH_ROOT)
             .put("createdAt", index.createdAtMillis)
         index.sourceModifiedMillis?.let { root.put("sourceModifiedAt", it) }
+        index.sourceSnapshotIdentity?.let { root.put("sourceSnapshotIdentity", it) }
         val albums = JSONArray()
         index.albums.forEach { album ->
             albums.put(
