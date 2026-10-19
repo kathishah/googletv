@@ -2,7 +2,6 @@ package com.googletv.screensaver.playback
 
 import android.graphics.Bitmap
 import android.os.SystemClock
-import android.util.Log
 import com.googletv.screensaver.PairScene
 import com.hierynomus.smbj.session.SMB2GuestSigningRequiredException
 import java.util.concurrent.ExecutorService
@@ -41,6 +40,7 @@ class SlideshowPlayer internal constructor(
     private val worker: ExecutorService = newPlayerExecutor("photo-source-loader"),
     private val fallbackWorker: ExecutorService = newPlayerExecutor("fallback-photo-loader"),
     private val clockMillis: () -> Long = SystemClock::elapsedRealtime,
+    private val logger: PlayerLogger = AndroidPlayerLogger,
 ) {
     // Stored photos are local, so they get their own thread and never wait behind an SMB timeout.
     private var fallbackSlides: List<Slide>? = null // fallback worker thread only
@@ -135,7 +135,7 @@ class SlideshowPlayer internal constructor(
         if (pairing == null) return loaded
         val planned = PairPlanner.plan(loaded, photoSource::isPairable)
         val pairs = planned.count { it.partner != null }
-        Log.i(LOG_TAG, "Layout Portrait pairs: ${planned.size} slides from ${loaded.size} (${pairs} pairs, ${loaded.count { photoSource.isPairable(it) }} portrait photos)")
+        logger.info("Layout Portrait pairs: ${planned.size} slides from ${loaded.size} (${pairs} pairs, ${loaded.count { photoSource.isPairable(it) }} portrait photos)")
         return planned
     }
 
@@ -150,9 +150,7 @@ class SlideshowPlayer internal constructor(
             return
         }
         val kind = error.smbFailureKind()
-        Log.w(
-            LOG_TAG,
-            "Photo listing attempt ${attempt + 1} failed ($kind, ${error.safeCauseChain()}, " +
+        logger.warning("Photo listing attempt ${attempt + 1} failed ($kind, ${error.safeCauseChain()}, " +
                 "${error.safeSmbStatus()})",
         )
         if (kind == SmbFailureKind.CONFIGURATION) {
@@ -166,7 +164,7 @@ class SlideshowPlayer internal constructor(
         }
         if (attempt + 1 >= ERROR_AFTER_FAILURES) showUnavailable(runGeneration)
         val delayMillis = backoffMillis(attempt)
-        Log.i(LOG_TAG, "Retrying photo listing in $delayMillis ms")
+        logger.info("Retrying photo listing in $delayMillis ms")
         runDelayed(delayMillis) {
             if (isCurrent(runGeneration)) requestListing(runGeneration, attempt + 1)
         }
@@ -271,9 +269,7 @@ class SlideshowPlayer internal constructor(
             shown = PairFailureRules.repair(slides, index, content.survivorIsFirst, kind)
             // Like a single photo, only a network-type failure counts toward the three that bring up the stored artworks.
             if (kind != SmbFailureKind.PER_FILE) imageFailureStreak += 1
-            Log.w(
-                LOG_TAG,
-                "One photo of a pair failed (${if (kind == SmbFailureKind.PER_FILE) "dropped" else "kept, sent to the back"}: " +
+            logger.warning("One photo of a pair failed (${if (kind == SmbFailureKind.PER_FILE) "dropped" else "kept, sent to the back"}: " +
                     "$kind, ${failure.safeCauseChain()}, ${failure.safeSmbStatus()}), showing the other alone, streak $imageFailureStreak",
             )
         }
@@ -291,7 +287,7 @@ class SlideshowPlayer internal constructor(
             showSlide(shown.copy(description = content.photo.label.orEmpty()), content.photo.bitmap)
         }
         if (pairing != null) {
-            Log.i(LOG_TAG, "Slide shown: ${if (content.isPair) "pair" else "single"}, ${if (lastShownAt == 0L) 0 else now - lastShownAt} ms after the previous")
+            logger.info("Slide shown: ${if (content.isPair) "pair" else "single"}, ${if (lastShownAt == 0L) 0 else now - lastShownAt} ms after the previous")
         }
         lastShownAt = now
         if (!schedulerStarted) {
@@ -375,9 +371,7 @@ class SlideshowPlayer internal constructor(
                     b.bitmap.recycle()
                     return LoadedContent(a, survivorIsFirst = true, failure = IllegalStateException("No pair layout"))
                 }
-                Log.i(
-                    LOG_TAG,
-                    "Pair loaded: decode ${firstDoneAt - startedAt} + ${decodedAt - firstDoneAt} ms, " +
+                logger.info("Pair loaded: decode ${firstDoneAt - startedAt} + ${decodedAt - firstDoneAt} ms, " +
                         "background ${clockMillis() - decodedAt} ms, style ${slide.look?.style ?: "black"}",
                 )
                 LoadedContent(a, b, scene)
@@ -474,24 +468,64 @@ class SlideshowPlayer internal constructor(
      */
     private fun handleVideoFailure(index: Int, slide: Slide, permanent: Boolean, detail: String, runGeneration: Int) {
         if (!isCurrent(runGeneration)) return
+        if (index < 0) return
+        val failedWasCurrent = currentSlide == slide
         imageFailureStreak += 1
-        Log.w(LOG_TAG, "Skipping video (${if (permanent) "dropped" else "retry later"}: $detail), streak $imageFailureStreak")
-        if (index >= 0) {
-            slides.removeAt(index)
-            if (!permanent) slides.add(slide)
-            if (index < currentIndex) currentIndex--
-        }
+        logger.warning("Skipping video (${if (permanent) "dropped" else "retry later"}: $detail), streak $imageFailureStreak")
+        slides.removeAt(index)
+        if (!permanent) slides.add(slide)
+        if (index < currentIndex) currentIndex--
         if (slides.isEmpty()) {
             scheduler.stop()
             showError("Could not play any videos. They may be unavailable or unsupported.")
             return
         }
         if (imageFailureStreak >= ERROR_AFTER_FAILURES) showUnavailable(runGeneration)
+
+        // The successor occupies the failed slot unless it was the last item (or a transient failure
+        // was moved to the end). Keep a decoded photo only when it is that successor.
+        val successorIndex = if (index < slides.size && (permanent || index < slides.lastIndex)) index else 0
+        val successor = slides[successorIndex]
+        if (prepared != null && prepared?.slide != successor) clearPreparedPhoto()
+
+        if (failedWasCurrent) {
+            if (slides.size == 1) {
+                currentIndex = 0
+                if (successor == slide) {
+                    retrySoleVideo(slide, runGeneration)
+                } else {
+                    showOnlySlide(successor, runGeneration)
+                }
+            } else {
+                currentIndex = (successorIndex - 1 + slides.size) % slides.size
+                callbacks.post { if (isCurrent(runGeneration)) showNextSlide() }
+            }
+            return
+        }
         if (currentSlide == null) {
-            currentIndex = index.coerceIn(0, slides.lastIndex)
-            loadSlide(currentIndex, runGeneration)
-        } else {
+            currentIndex = successorIndex
+            if (slides.size == 1 && successor == slide) retrySoleVideo(slide, runGeneration)
+            else loadSlide(currentIndex, runGeneration)
+        } else if (slides.size >= 2) {
             callbacks.post { if (isCurrent(runGeneration)) showNextSlide() }
+        }
+    }
+
+    private fun showOnlySlide(slide: Slide, runGeneration: Int) {
+        val ready = prepared?.takeIf { it.slide == slide }
+        if (ready != null) {
+            prepared = null
+            presentSlide(0, slide, ready.content)
+        } else {
+            if (prepared != null) clearPreparedPhoto()
+            loadSlide(0, runGeneration)
+        }
+    }
+
+    private fun retrySoleVideo(slide: Slide, runGeneration: Int) {
+        currentIndex = 0
+        runDelayed(backoffMillis(imageFailureStreak - 1)) {
+            if (isCurrent(runGeneration) && slides.singleOrNull() == slide) startVideoSlide(0, slide)
         }
     }
 
@@ -514,7 +548,7 @@ class SlideshowPlayer internal constructor(
             handleTransientImageFailure(index, slide, kind, error, runGeneration)
             return
         }
-        Log.w(LOG_TAG, "Skipping unreadable photo (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
+        logger.warning("Skipping unreadable photo (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
         if (prepared?.slide == slide) clearPreparedPhoto()
         slides.removeAt(index)
         if (slides.isEmpty()) {
@@ -548,9 +582,7 @@ class SlideshowPlayer internal constructor(
         imageFailureStreak += 1
         val delayMillis = backoffMillis(imageFailureStreak - 1)
         imageRetryNotBefore = clockMillis() + delayMillis
-        Log.w(
-            LOG_TAG,
-            "Photo load failed, keeping it ($kind, streak $imageFailureStreak, " +
+        logger.warning("Photo load failed, keeping it ($kind, streak $imageFailureStreak, " +
                 "${error.safeCauseChain()}, ${error.safeSmbStatus()}); next attempt in $delayMillis ms",
         )
         if (prepared?.slide == slide) clearPreparedPhoto()
@@ -578,7 +610,7 @@ class SlideshowPlayer internal constructor(
         }
         if (fallbackActive) return
         fallbackActive = true
-        Log.i(LOG_TAG, "Showing stored photos until the photo source recovers")
+        logger.info("Showing stored photos until the photo source recovers")
         showNextFallback(runGeneration)
     }
 
@@ -601,7 +633,7 @@ class SlideshowPlayer internal constructor(
                         showSlide(slide.copy(description = FALLBACK_LABEL), photo.bitmap)
                     },
                     onFailure = { error ->
-                        Log.w(LOG_TAG, "Stored photo failed (${error.safeCauseChain()})")
+                        logger.warning("Stored photo failed (${error.safeCauseChain()})")
                         if (currentSlide == null) showError(UNAVAILABLE_MESSAGE)
                     },
                 )
@@ -613,7 +645,7 @@ class SlideshowPlayer internal constructor(
     private fun exitFallback() {
         if (!fallbackActive) return
         fallbackActive = false
-        Log.i(LOG_TAG, "Stored photos hidden")
+        logger.info("Stored photos hidden")
         callbacks.removeCallbacks(fallbackTick)
     }
 
@@ -651,7 +683,6 @@ class SlideshowPlayer internal constructor(
         generateSequence(this) { it.cause }.any { it is SMB2GuestSigningRequiredException }
 
     companion object {
-        private const val LOG_TAG = "PhotoSource"
         private const val INITIAL_BACKOFF_MILLIS = 2_000L
         private const val MAX_BACKOFF_MILLIS = 15_000L
         private const val ERROR_AFTER_FAILURES = 3
