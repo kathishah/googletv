@@ -226,7 +226,8 @@ internal class ProgressiveReader(
     /** MediaDataSource-style read: copies from the local file, waiting for the block if it is not there yet. */
     @Throws(IOException::class)
     fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
-        if (position < 0 || position >= sizeBytes || size <= 0) return -1
+        if (size == 0) return 0
+        if (position < 0 || position >= sizeBytes || size < 0) return -1
         var copied = 0
         var current = position
         while (copied < size && current < sizeBytes) {

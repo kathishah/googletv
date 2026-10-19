@@ -116,7 +116,8 @@ class ProgressiveReaderTest {
         }
         assertEquals(-1, reader.readAt(10_500L, ByteArray(10), 0, 10))
         assertEquals(-1, reader.readAt(-1L, ByteArray(10), 0, 10))
-        assertEquals(-1, reader.readAt(5L, ByteArray(10), 0, 0))
+        assertEquals(0, reader.readAt(5L, ByteArray(10), 0, 0))
+        assertEquals(0, reader.readAt(10_500L, ByteArray(10), 0, 0))
         reader.close()
     }
 
