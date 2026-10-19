@@ -558,13 +558,14 @@ class SmbGuestPhotoSource(
         try {
             return block(smb.share)
         } catch (error: Throwable) {
-            discard(smb)
+            val failureKind = error.smbFailureKind()
+            if (failureKind.shouldDiscardConnection()) discard(smb)
             if (epoch.get() != startedEpoch) {
                 // close() interrupted this request on purpose (the dream stopped); not a failure.
                 Log.d(LOG_TAG, "SMB request cancelled by close")
                 throw error
             }
-            if (reused && error.smbFailureKind() == SmbFailureKind.TRANSIENT) {
+            if (failureKind.shouldReconnectReusedConnection(reused)) {
                 Log.i(LOG_TAG, "Reused SMB connection failed (${error.safeCauseChain()}); reconnecting")
                 return withDiskShare(block)
             }

@@ -24,6 +24,17 @@ class SmbErrorsTest {
     }
 
     @Test
+    fun perFileRefusalsKeepTheConnectionButSessionFailuresDiscardAndReconnectWhenReused() {
+        assertFalse(SmbFailureKind.PER_FILE.shouldDiscardConnection())
+        assertTrue(SmbFailureKind.TRANSIENT.shouldDiscardConnection())
+        assertTrue(SmbFailureKind.CONFIGURATION.shouldDiscardConnection())
+
+        assertFalse(SmbFailureKind.TRANSIENT.shouldReconnectReusedConnection(reused = false))
+        assertTrue(SmbFailureKind.TRANSIENT.shouldReconnectReusedConnection(reused = true))
+        assertFalse(SmbFailureKind.PER_FILE.shouldReconnectReusedConnection(reused = true))
+    }
+
+    @Test
     fun otherKindsAreUnchanged() {
         assertEquals(SmbFailureKind.CONFIGURATION, SmbConfigurationException("x").smbFailureKind())
         assertEquals(SmbFailureKind.PER_FILE, IOException("decoder").smbFailureKind())

@@ -33,6 +33,13 @@ internal class SmbConfigurationException(message: String) : RuntimeException(mes
 internal class ShareUnreadableException(sampleSize: Int) :
     RuntimeException("None of $sampleSize sampled photos could be opened")
 
+/** Per-file refusals say nothing about the reusable SMB session. */
+internal fun SmbFailureKind.shouldDiscardConnection(): Boolean = this != SmbFailureKind.PER_FILE
+
+/** A stale reused session gets one immediate reconnect; fresh-session failures follow normal retry. */
+internal fun SmbFailureKind.shouldReconnectReusedConnection(reused: Boolean): Boolean =
+    reused && this == SmbFailureKind.TRANSIENT
+
 internal fun Throwable.smbFailureKind(): SmbFailureKind {
     val chain = causes()
     if (chain.any { it is SMB2GuestSigningRequiredException || it is SmbConfigurationException }) {
