@@ -268,6 +268,26 @@ class DatabaseStageTest {
     }
 
     @Test
+    fun invalidWalFrameChecksumIsRejectedAndRetryPublishesValidSnapshot() {
+        val validWal = WalBuilder.wal(header, WalBuilder.frame(1, 1), WalBuilder.frame(2, 2))
+        val corruptedWal = validWal.copyOf().also { it[32 + 24 + 20] = (it[32 + 24 + 20].toInt() xor 0x20).toByte() }
+        val remote = FakeRemote(database(1), 100L, corruptedWal, 200L)
+
+        try {
+            sync(remote)
+            fail("expected a WAL checksum error")
+        } catch (expected: AlbumIndexException) {
+            assertTrue(expected.message!!.contains("log"))
+        }
+        assertFalse(File(stageDirectory, "sync-state.properties").exists())
+
+        remote.wal = validWal
+        remote.walModified = 201L
+        sync(remote)
+        assertArrayEquals(validWal, localWal())
+    }
+
+    @Test
     fun uncommittedTailIsFetchedAgainAfterItIsOverwritten() {
         val committed = WalBuilder.wal(header, WalBuilder.frame(1, 1))
         val remote = FakeRemote(database(1), 100L, WalBuilder.wal(committed, WalBuilder.frame(2, 0)), 200L)

@@ -123,10 +123,14 @@ internal class DatabaseStage(private val directory: File) {
         } else null
         try {
             if (wal != null && walHeader != null) {
-                val scanner = if (resumeFrom > 0L) WalFrameScanner.resume(walHeader, resumeFrom) else WalFrameScanner.start()
+                val scanner = if (resumeFrom > 0L) {
+                    WalFrameScanner.resume(walHeader, resumeFrom, committedChecksum(resumeFrom, walHeader))
+                } else {
+                    WalFrameScanner.start()
+                }
                 walFetched = timings.time("wal_copy") { copyWal(remote, wal, resumeFrom, scanner, report) }
                 timings.addBytes("wal_copy", walFetched)
-                if (scanner.headerInvalid) throw walUnreadable()
+                if (scanner.headerInvalid || scanner.checksumInvalid) throw walUnreadable()
                 committed = scanner.committedBytes
                 RandomAccessFile(walFile, "rw").use { it.setLength(committed) }
             } else {
@@ -362,9 +366,28 @@ internal class DatabaseStage(private val directory: File) {
         return hex(digest.digest())
     }
 
+    private fun committedChecksum(committedBytes: Long, header: ByteArray): Pair<Long, Long> {
+        val checksumOffset = if (committedBytes == WalFrameScanner.WAL_HEADER_BYTES.toLong()) {
+            24L
+        } else {
+            committedBytes - WalFrameScanner.frameBytes(header) + 16L
+        }
+        val bytes = ByteArray(8)
+        RandomAccessFile(walFile, "r").use { file ->
+            file.seek(checksumOffset)
+            file.readFully(bytes)
+        }
+        fun word(offset: Int) =
+            (((bytes[offset].toLong() and 0xff) shl 24) or
+                ((bytes[offset + 1].toLong() and 0xff) shl 16) or
+                ((bytes[offset + 2].toLong() and 0xff) shl 8) or
+                (bytes[offset + 3].toLong() and 0xff))
+        return word(0) to word(4)
+    }
+
     private companion object {
         const val STATE_FILE = "sync-state.properties"
-        const val STATE_VERSION = "2"
+        const val STATE_VERSION = "3"
         const val BUFFER_BYTES = 1024 * 1024
         val LOCK = Any()
     }
