@@ -1,13 +1,10 @@
 package com.googletv.screensaver.playback
 
-import android.os.Handler
-import android.os.Looper
-
 /** Calls [onTick] at the current user-selected interval. It does not know about photos or views. */
-class SlideshowScheduler(
+internal class SlideshowScheduler(
     private val intervalMillis: () -> Long,
     private val onTick: () -> Unit,
-    private val handler: Handler = Handler(Looper.getMainLooper()),
+    private val dispatcher: CallbackDispatcher = HandlerCallbackDispatcher(),
 ) {
     private var running = false
     private var scheduleGeneration = 0
@@ -18,7 +15,7 @@ class SlideshowScheduler(
             val runGeneration = scheduleGeneration
             onTick()
             if (running && runGeneration == scheduleGeneration) {
-                handler.postDelayed(this, intervalMillis())
+                dispatcher.postDelayed(this, intervalMillis())
             }
         }
     }
@@ -26,20 +23,20 @@ class SlideshowScheduler(
     fun start() {
         if (running) return
         running = true
-        handler.postDelayed(ticker, intervalMillis())
+        dispatcher.postDelayed(ticker, intervalMillis())
     }
 
     fun stop() {
         running = false
         scheduleGeneration++
-        handler.removeCallbacks(ticker)
+        dispatcher.removeCallbacks(ticker)
     }
 
     /** Restart the dwell interval from the moment a newly decoded slide is displayed. */
     fun resetInterval() {
         if (!running) return
         scheduleGeneration++
-        handler.removeCallbacks(ticker)
-        handler.postDelayed(ticker, intervalMillis())
+        dispatcher.removeCallbacks(ticker)
+        dispatcher.postDelayed(ticker, intervalMillis())
     }
 }

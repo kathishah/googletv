@@ -1,8 +1,6 @@
 package com.googletv.screensaver.playback
 
 import android.graphics.Bitmap
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.googletv.screensaver.PairScene
@@ -10,6 +8,9 @@ import com.hierynomus.smbj.session.SMB2GuestSigningRequiredException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+
+private fun newPlayerExecutor(threadName: String): ExecutorService =
+    Executors.newSingleThreadExecutor { runnable -> Thread(runnable, threadName).apply { isDaemon = true } }
 
 /**
  * Turns on Portrait pairs: [showPair] draws two photos and their background, and [screenWidth] by
@@ -23,7 +24,7 @@ class PairingConfig(
 )
 
 /** Loads photo metadata and images off the UI thread, then hands decoded frames to the renderer. */
-class SlideshowPlayer(
+class SlideshowPlayer internal constructor(
     private val photoSource: PhotoSource,
     private val intervalMillis: () -> Long,
     private val showSlide: (Slide, Bitmap) -> Unit,
@@ -36,15 +37,12 @@ class SlideshowPlayer(
     private val videoStage: VideoStage? = null,
     /** Pairs portrait photos on one slide (Layout = Portrait pairs). Null = Layout Single. */
     private val pairing: PairingConfig? = null,
+    private val callbacks: CallbackDispatcher = HandlerCallbackDispatcher(),
+    private val worker: ExecutorService = newPlayerExecutor("photo-source-loader"),
+    private val fallbackWorker: ExecutorService = newPlayerExecutor("fallback-photo-loader"),
+    private val clockMillis: () -> Long = SystemClock::elapsedRealtime,
 ) {
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "photo-source-loader").apply { isDaemon = true }
-    }
     // Stored photos are local, so they get their own thread and never wait behind an SMB timeout.
-    private val fallbackWorker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "fallback-photo-loader").apply { isDaemon = true }
-    }
     private var fallbackSlides: List<Slide>? = null // fallback worker thread only
     private var fallbackCursor = 0 // fallback worker thread only
     private var fallbackActive = false
@@ -68,7 +66,7 @@ class SlideshowPlayer(
     private var videoPlayback: VideoPlayback? = null
     private var videoActive = false
     private var videoToken = 0
-    private val scheduler = SlideshowScheduler(intervalMillis, ::showNextSlide)
+    private val scheduler = SlideshowScheduler(intervalMillis, ::showNextSlide, callbacks)
 
     private class PreparedSlide(val slide: Slide, val content: LoadedContent)
 
@@ -112,7 +110,7 @@ class SlideshowPlayer(
     private fun requestListing(runGeneration: Int, attempt: Int) {
         pending = worker.submit {
             val result = runCatching { photoSource.loadSlides() }
-            mainHandler.post {
+            callbacks.post {
                 if (!isCurrent(runGeneration)) return@post
                 result.fold(
                     onSuccess = { loadedSlides ->
@@ -204,7 +202,7 @@ class SlideshowPlayer(
 
     private fun showNextSlide() {
         if (!active || slides.size < 2 || loadingImage || videoActive) return
-        if (SystemClock.elapsedRealtime() < imageRetryNotBefore) return
+        if (clockMillis() < imageRetryNotBefore) return
         val nextIndex = (currentIndex + 1) % slides.size
         val nextSlide = slides[nextIndex]
         if (nextSlide.kind == SlideKind.VIDEO) {
@@ -234,7 +232,7 @@ class SlideshowPlayer(
         loadingImage = true
         pending = worker.submit {
             val result = runCatching { loadContent(slide) }
-            mainHandler.post {
+            callbacks.post {
                 if (!isCurrent(runGeneration)) {
                     result.getOrNull()?.recycle()
                     return@post
@@ -281,7 +279,7 @@ class SlideshowPlayer(
         }
         currentIndex = index
         currentSlide = shown
-        val now = SystemClock.elapsedRealtime()
+        val now = clockMillis()
         val partner = shown.partner
         if (content.isPair && partner != null) {
             pairing?.showPair?.invoke(
@@ -308,7 +306,7 @@ class SlideshowPlayer(
     private fun preloadNextSlide(runGeneration: Int) {
         if (!isCurrent(runGeneration) || slides.size < 2 || loadingImage ||
             preloadingSlide != null || prepared != null ||
-            SystemClock.elapsedRealtime() < imageRetryNotBefore
+            clockMillis() < imageRetryNotBefore
         ) return
         val nextIndex = (currentIndex + 1) % slides.size
         val slide = slides[nextIndex]
@@ -316,7 +314,7 @@ class SlideshowPlayer(
         preloadingSlide = slide
         pending = worker.submit {
             val result = runCatching { loadContent(slide) }
-            mainHandler.post {
+            callbacks.post {
                 if (!isCurrent(runGeneration)) {
                     result.getOrNull()?.recycle()
                     return@post
@@ -358,11 +356,11 @@ class SlideshowPlayer(
         val partnerSlide = slide.partner
         val config = pairing
         if (partnerSlide == null || config == null) return LoadedContent(photoSource.loadImage(slide))
-        val startedAt = SystemClock.elapsedRealtime()
+        val startedAt = clockMillis()
         val first = runCatching { photoSource.loadImage(slide) }
-        val firstDoneAt = SystemClock.elapsedRealtime()
+        val firstDoneAt = clockMillis()
         val second = runCatching { photoSource.loadImage(partnerSlide) }
-        val decodedAt = SystemClock.elapsedRealtime()
+        val decodedAt = clockMillis()
         return when (val outcome = PairFailureRules.classify(first.exceptionOrNull(), second.exceptionOrNull())) {
             is PairFailureRules.Outcome.NoneLoaded -> throw outcome.error
             is PairFailureRules.Outcome.OneLoaded -> {
@@ -380,7 +378,7 @@ class SlideshowPlayer(
                 Log.i(
                     LOG_TAG,
                     "Pair loaded: decode ${firstDoneAt - startedAt} + ${decodedAt - firstDoneAt} ms, " +
-                        "background ${SystemClock.elapsedRealtime() - decodedAt} ms, style ${slide.look?.style ?: "black"}",
+                        "background ${clockMillis() - decodedAt} ms, style ${slide.look?.style ?: "black"}",
                 )
                 LoadedContent(a, b, scene)
             }
@@ -409,7 +407,7 @@ class SlideshowPlayer(
         loadingImage = true
         pending = worker.submit {
             val result = runCatching { photoSource.prepareVideo(slide) }
-            mainHandler.post {
+            callbacks.post {
                 if (!isCurrent(runGeneration)) {
                     result.getOrNull()?.close()
                     return@post
@@ -493,7 +491,7 @@ class SlideshowPlayer(
             currentIndex = index.coerceIn(0, slides.lastIndex)
             loadSlide(currentIndex, runGeneration)
         } else {
-            mainHandler.post { if (isCurrent(runGeneration)) showNextSlide() }
+            callbacks.post { if (isCurrent(runGeneration)) showNextSlide() }
         }
     }
 
@@ -549,7 +547,7 @@ class SlideshowPlayer(
     ) {
         imageFailureStreak += 1
         val delayMillis = backoffMillis(imageFailureStreak - 1)
-        imageRetryNotBefore = SystemClock.elapsedRealtime() + delayMillis
+        imageRetryNotBefore = clockMillis() + delayMillis
         Log.w(
             LOG_TAG,
             "Photo load failed, keeping it ($kind, streak $imageFailureStreak, " +
@@ -593,7 +591,7 @@ class SlideshowPlayer(
                 val slide = all[fallbackCursor++ % all.size]
                 slide to source.loadImage(slide)
             }
-            mainHandler.post {
+            callbacks.post {
                 if (!fallbackActive || !isCurrent(runGeneration)) {
                     result.getOrNull()?.second?.bitmap?.recycle()
                     return@post
@@ -607,7 +605,7 @@ class SlideshowPlayer(
                         if (currentSlide == null) showError(UNAVAILABLE_MESSAGE)
                     },
                 )
-                mainHandler.postDelayed(fallbackTick, intervalMillis())
+                callbacks.postDelayed(fallbackTick, intervalMillis())
             }
         }
     }
@@ -616,7 +614,7 @@ class SlideshowPlayer(
         if (!fallbackActive) return
         fallbackActive = false
         Log.i(LOG_TAG, "Stored photos hidden")
-        mainHandler.removeCallbacks(fallbackTick)
+        callbacks.removeCallbacks(fallbackTick)
     }
 
     private fun noteImageLoaded() {
@@ -631,11 +629,11 @@ class SlideshowPlayer(
             action()
         }
         delayedAction = runnable
-        mainHandler.postDelayed(runnable, delayMillis)
+        callbacks.postDelayed(runnable, delayMillis)
     }
 
     private fun cancelDelayed() {
-        delayedAction?.let(mainHandler::removeCallbacks)
+        delayedAction?.let(callbacks::removeCallbacks)
         delayedAction = null
     }
 
