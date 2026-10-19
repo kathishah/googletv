@@ -148,7 +148,12 @@ internal class DatabaseStage(private val directory: File) {
                 }
             }
             progress(total, total)
-            val snapshotIdentity = snapshotIdentity(committed)
+            // When the database and committed WAL prefix were both reused, their prior fingerprint
+            // remains authoritative. A refresh may have fetched an uncommitted WAL tail, but that
+            // tail was discarded before this point and cannot change the SQLite snapshot.
+            val snapshotIdentity = if (
+                prior != null && reuseDatabase && resumeFrom == prior.walCommitted && committed == prior.walCommitted
+            ) prior.snapshotIdentity else snapshotIdentity(committed)
             saveState(SyncState(
                 database.size,
                 database.modifiedMillis,

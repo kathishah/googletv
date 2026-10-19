@@ -67,6 +67,7 @@ class MainActivity : Activity() {
     private var pickerOpen = false
     private var smbSettingsOpen = false
     private var catalogLoadToken = 0
+    private var videoCatalogGateToken = 0
     private var albumCoverSource: SmbGuestPhotoSource? = null
     private val requestedCoverIds = mutableSetOf<String>()
     private val albumCoverCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
@@ -104,6 +105,7 @@ class MainActivity : Activity() {
         albumExecutor.shutdownNow()
         pickerOpen = false
         catalogLoadToken++
+        videoCatalogGateToken++
         albumCoverCache.clear()
         super.onDestroy()
     }
@@ -173,7 +175,7 @@ class MainActivity : Activity() {
         root.addView(settingsStatus)
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
         actions.addView(button("Preview") { saveDraftAndPreview() }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
-        actions.addView(button("Save") { saveDraft() }.apply {
+        actions.addView(button("Save") { saveDraftWithCatalogCheck() }.apply {
             setBackgroundTintList(ColorStateList.valueOf(SELECTED_COLOR))
         }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
         actions.addView(button("Cancel") { cancelDraft() }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
@@ -398,7 +400,111 @@ class MainActivity : Activity() {
     }
 
     private fun saveDraftAndPreview() {
-        if (saveDraft()) enterPreview()
+        saveDraftWithCatalogCheck(preview = true)
+    }
+
+    private fun needsVideoCatalogCheck(): Boolean = sourceMode == PhotoSourceMode.SMB_GUEST && mediaType.includesVideos
+
+    private fun saveDraftWithCatalogCheck(preview: Boolean = false) {
+        if (!needsVideoCatalogCheck()) {
+            if (saveDraft() && preview) enterPreview()
+            return
+        }
+        checkVideoCatalog(preview)
+    }
+
+    /** Confirm a usable SMB catalog before committing a video-inclusive Type; Media All stays All. */
+    private fun checkVideoCatalog(preview: Boolean) {
+        val token = ++videoCatalogGateToken
+        saveSmbDraftFromFields()
+        val config = draftSmbConfig
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(64), dp(40), dp(64), dp(40))
+            setBackgroundColor(Color.rgb(16, 24, 33))
+        }
+        root.addView(text("Preparing video catalog", 30f, true))
+        root.addView(ProgressBar(this).apply { isIndeterminate = true }, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+            topMargin = dp(24); bottomMargin = dp(18)
+        })
+        val transferProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000
+            isIndeterminate = true
+        }
+        root.addView(transferProgress, LinearLayout.LayoutParams(-1, dp(12)).apply { bottomMargin = dp(12) })
+        val progressText = text("Checking the Photos library…", 18f, false).apply { setTextColor(Color.rgb(190, 204, 218)) }
+        root.addView(progressText)
+        setContentView(root)
+        albumExecutor.execute {
+            val result = runCatching {
+                val source = SmbGuestPhotoSource(
+                    config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
+                    catalogCacheDirectory = filesDir,
+                )
+                try {
+                    source.loadAlbumIndex(File(filesDir, "photos-album-catalog-v1.json"), refresh = true) { update -> runOnUiThread {
+                        if (!isFinishing && token == videoCatalogGateToken) {
+                            val copied = update.bytesCopied
+                            val total = update.totalBytes
+                            if (copied != null && total != null && total > 0L) {
+                                transferProgress.isIndeterminate = false
+                                val fraction = (copied.coerceAtMost(total) * transferProgress.max / total).toInt()
+                                transferProgress.progress = fraction
+                                progressText.text = "${update.message} · ${fraction * 100 / transferProgress.max}% (${formatBytes(copied)} / ${formatBytes(total)})"
+                            } else {
+                                transferProgress.isIndeterminate = true
+                                progressText.text = "${update.message}…"
+                            }
+                        }
+                    } }
+                } finally {
+                    source.close()
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || token != videoCatalogGateToken) return@runOnUiThread
+                result.fold(
+                    {
+                        setContentView(settingsScreen)
+                        if (saveDraft() && preview) enterPreview()
+                    },
+                    { error ->
+                        val message = if (error is com.googletv.screensaver.playback.AlbumIndexException) {
+                            error.message ?: "The Photos video catalog is unavailable. Check the share and retry."
+                        } else {
+                            "Couldn't prepare the Photos video catalog. Check the share and retry."
+                        }
+                        showVideoCatalogGateError(message, preview)
+                    },
+                )
+            }
+        }
+    }
+
+    private fun showVideoCatalogGateError(message: String, preview: Boolean) {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(72), dp(40), dp(72), dp(40))
+            setBackgroundColor(Color.rgb(16, 24, 33))
+        }
+        root.addView(text("Video catalog unavailable", 30f, true))
+        root.addView(text(message, 19f, false).apply {
+            setTextColor(Color.rgb(255, 190, 130))
+            setPadding(0, dp(18), 0, dp(24))
+        })
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val retry = button("Retry") { checkVideoCatalog(preview) }
+        actions.addView(retry)
+        actions.addView(button("Back to settings") {
+            videoCatalogGateToken++
+            setContentView(settingsScreen)
+            refreshSettingsControls()
+        }, LinearLayout.LayoutParams(-2, dp(56)).apply { marginStart = dp(12) })
+        root.addView(actions)
+        setContentView(root)
+        retry.requestFocus()
     }
 
     private fun input(hint: String, value: String) = EditText(this).apply {

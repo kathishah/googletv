@@ -297,6 +297,10 @@ class SmbGuestPhotoSource(
             Log.w(LOG_TAG, "Album catalog refresh failed after: ${timings.summary()}")
             throw error
         } catch (error: Throwable) {
+            if (error.smbFailureKind() == SmbFailureKind.TRANSIENT) {
+                Log.w(LOG_TAG, "Album catalog refresh can be retried (${error.safeCauseChain()}, ${error.safeSmbStatus()}) after: ${timings.summary()}")
+                throw error
+            }
             Log.w(LOG_TAG, "Album catalog refresh failed (${error.safeCauseChain()}) after: ${timings.summary()}")
             throw AlbumIndexException("Could not build the album catalog from the Photos database. Check that the library share is available, then try Refresh.")
         }

@@ -62,18 +62,20 @@ class DatabaseStageTest {
     fun repeatedUncommittedWalTailDoesNotChangeCommittedSnapshotIdentity() {
         val committed = WalBuilder.wal(header, WalBuilder.frame(1, 1))
         val remote = FakeRemote(database(1), 100L, committed, 200L)
-        sync(remote)
+        val originalSnapshot = sync(remote)
 
         val uncommittedTail = WalBuilder.wal(committed, WalBuilder.frame(2, 0))
         remote.wal = uncommittedTail
         remote.walModified = 300L
         val firstTailRefresh = sync(remote)
         assertTrue(firstTailRefresh.unchanged)
+        assertEquals(originalSnapshot.snapshotIdentity, firstTailRefresh.snapshotIdentity)
         assertEquals(WalBuilder.FRAME_BYTES.toLong(), firstTailRefresh.walBytesFetched)
 
         remote.served.clear()
         val repeatedTailRefresh = sync(remote)
         assertTrue(repeatedTailRefresh.unchanged)
+        assertEquals(originalSnapshot.snapshotIdentity, repeatedTailRefresh.snapshotIdentity)
         assertEquals(WalBuilder.FRAME_BYTES.toLong(), repeatedTailRefresh.walBytesFetched)
         assertEquals(committed.size.toLong(), repeatedTailRefresh.localWalBytes)
     }
