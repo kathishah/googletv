@@ -949,7 +949,7 @@ class MainActivity : Activity() {
     }
 
     private fun leavePreview() {
-        player?.stop()
+        player?.dispose()
         player = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(settingsScreen)
