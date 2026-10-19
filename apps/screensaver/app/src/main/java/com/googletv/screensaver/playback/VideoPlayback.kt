@@ -31,7 +31,7 @@ interface VideoEvents {
     /** The clip played to its end or to the length cap. */
     fun onFinished()
 
-    fun onFailed(reason: VideoFailure)
+    fun onFailed(reason: VideoFailure, cause: Throwable? = null)
 }
 
 interface VideoPlayback {

@@ -437,7 +437,8 @@ class SlideshowPlayer internal constructor(
         fun current() = isCurrent(runGeneration) && videoToken == token
         videoPlayback = stage.play(video, object : VideoEvents {
             override fun onStarted() {
-                if (current()) noteImageLoaded()
+                // The first frame proves only that playback began. A later stall must still count.
+                if (current()) logger.info("Video started")
             }
 
             override fun onDownloadComplete() {
@@ -448,15 +449,17 @@ class SlideshowPlayer internal constructor(
                 if (!current()) return
                 videoActive = false
                 videoPlayback = null
+                noteImageLoaded()
                 // A pool of one clip replays it; otherwise the next slide follows at once.
                 if (slides.size == 1) startVideoSlide(0, slide) else showNextSlide()
             }
 
-            override fun onFailed(reason: VideoFailure) {
+            override fun onFailed(reason: VideoFailure, cause: Throwable?) {
                 if (!current()) return
                 videoActive = false
                 videoPlayback = null
-                handleVideoFailure(slides.indexOf(slide), slide, reason == VideoFailure.UNPLAYABLE, "player: $reason", runGeneration)
+                val detail = cause?.let { "${it.safeCauseChain()}, ${it.safeSmbStatus()}" } ?: "player: $reason"
+                handleVideoFailure(slides.indexOf(slide), slide, reason == VideoFailure.UNPLAYABLE, detail, runGeneration)
             }
         })
     }

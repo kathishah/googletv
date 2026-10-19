@@ -341,6 +341,9 @@ internal class ProgressiveReader(
         end - position
     }
 
+    /** The original reader error, if the remote read failed. */
+    fun failureCause(): Throwable? = lock.withLock { failure }
+
     /** True once every block is on this TV. */
     val isComplete: Boolean get() = lock.withLock { presentBytes >= sizeBytes }
 

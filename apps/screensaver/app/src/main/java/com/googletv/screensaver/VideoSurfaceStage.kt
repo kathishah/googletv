@@ -10,6 +10,7 @@ import com.googletv.screensaver.playback.PreparedVideo
 import com.googletv.screensaver.playback.VideoEvents
 import com.googletv.screensaver.playback.VideoFailure
 import com.googletv.screensaver.playback.VideoPlayback
+import com.googletv.screensaver.playback.VideoFailureRules
 import com.googletv.screensaver.playback.VideoStage
 
 /**
@@ -77,14 +78,15 @@ class VideoSurfaceStage(private val view: SlideshowView) : VideoStage {
                 mp.setOnErrorListener { _, what, extra ->
                     Log.w(LOG_TAG, "Video player error what=$what extra=$extra after ${SystemClock.elapsedRealtime() - beganAt} ms")
                     // Data that stopped arriving looks like a player error; a complete file that fails is the file's fault.
-                    finish(failure = if (started && !reader.isComplete) VideoFailure.STALLED else VideoFailure.UNPLAYABLE)
+                    val cause = reader.failureCause()
+                    finish(failure = VideoFailureRules.classify(cause), cause = cause)
                     true
                 }
                 mp.setDataSource(video.mediaDataSource())
                 mp.prepareAsync()
             } catch (error: Throwable) {
                 Log.w(LOG_TAG, "Video player setup failed (${error.javaClass.simpleName})")
-                finish(failure = VideoFailure.UNPLAYABLE)
+                finish(failure = VideoFailureRules.classify(error), cause = error)
             }
         }
 
@@ -133,7 +135,7 @@ class VideoSurfaceStage(private val view: SlideshowView) : VideoStage {
         }
 
         /** Ends the clip: stops the monitor, releases the player, deletes the temp file, then reports (unless cancelled). */
-        private fun finish(failure: VideoFailure?, report: Boolean = true) {
+        private fun finish(failure: VideoFailure?, cause: Throwable? = null, report: Boolean = true) {
             if (ended) return
             ended = true
             handler.removeCallbacks(monitor)
@@ -153,7 +155,7 @@ class VideoSurfaceStage(private val view: SlideshowView) : VideoStage {
                     "$pausesTotal pauses ($pausedMillisTotal ms), fetched ${stats.bytesFetched} of ${reader.sizeBytes} bytes",
             )
             if (!report) return
-            if (failure == null) events.onFinished() else events.onFailed(failure)
+            if (failure == null) events.onFinished() else events.onFailed(failure, cause)
         }
 
         override fun cancel() = finish(failure = null, report = false)

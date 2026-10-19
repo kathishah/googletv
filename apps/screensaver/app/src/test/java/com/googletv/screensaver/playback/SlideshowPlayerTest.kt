@@ -131,6 +131,55 @@ class SlideshowPlayerTest {
     }
 
     @Test
+    fun repeatedStartThenStallFailuresReachStoredPhotoFallback() {
+        val fallback = FixturePhotoSource(listOf(photo("fallback")))
+        val shown = mutableListOf<String>()
+        val callbacks = QueuedCallbacks()
+        val stage = FixtureVideoStage()
+        val player = fixturePlayer(FixturePhotoSource(listOf(video("A"), video("B"), video("C"))), callbacks,
+            stage, shown, fallback)
+        player.start()
+        callbacks.runPosted()
+
+        repeat(3) {
+            stage.failCurrent(VideoFailure.STALLED)
+            callbacks.runPosted()
+        }
+
+        assertEquals(listOf("fallback"), shown)
+        player.dispose()
+    }
+
+    @Test
+    fun completedVideoResetsTheFailureStreakButStartingOneDoesNot() {
+        val fallback = FixturePhotoSource(listOf(photo("fallback")))
+        val callbacks = QueuedCallbacks()
+        val source = FixturePhotoSource(listOf(video("A"), video("B"), video("C")))
+        val stage = FixtureVideoStage()
+        val shown = mutableListOf<String>()
+        val player = fixturePlayer(source, callbacks, stage, shown, fallback)
+        player.start()
+        callbacks.runPosted()
+
+        stage.failCurrent(VideoFailure.STALLED)
+        callbacks.runPosted()
+        stage.failCurrent(VideoFailure.STALLED)
+        callbacks.runPosted()
+        stage.finishCurrent()
+        callbacks.runPosted()
+        stage.failCurrent(VideoFailure.STALLED)
+        callbacks.runPosted()
+        stage.failCurrent(VideoFailure.STALLED)
+        callbacks.runPosted()
+
+        assertTrue(shown.isEmpty())
+        stage.failCurrent(VideoFailure.STALLED)
+        callbacks.runPosted()
+        assertEquals(listOf("fallback"), shown)
+        player.dispose()
+    }
+
+    @Test
     fun poolExhaustionRetriesListingThenShowsStoredPhotos() {
         var listingCalls = 0
         val source = FixturePhotoSource(
