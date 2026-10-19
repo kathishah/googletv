@@ -46,6 +46,7 @@ class MediaTypeRulesTest {
         assertFalse(MediaTypeRules.isEmptyForType(MediaType.PHOTOS, 0, 0))
         assertFalse(MediaTypeRules.showsVideoBadge(MediaType.PHOTOS, 40))
         assertNull(MediaTypeRules.typeNote(MediaType.PHOTOS))
+        assertNull(MediaTypeRules.videoIntervalNote(MediaType.PHOTOS))
         assertEquals(
             "2 selected album(s) have no readable supported pictures. Keep the selection or choose other albums.",
             MediaTypeRules.emptySelectionWarning(MediaType.PHOTOS, 2),
@@ -130,5 +131,7 @@ class MediaTypeRulesTest {
             "Videos play in the app slideshow only. The screensaver shows 500 random photos.",
             MediaTypeRules.typeNote(MediaType.VIDEOS),
         )
+        assertEquals("Videos play to the end, up to 60 s", MediaTypeRules.videoIntervalNote(MediaType.VIDEOS))
+        assertEquals("Videos play to the end, up to 60 s", MediaTypeRules.videoIntervalNote(MediaType.PHOTOS_AND_VIDEOS))
     }
 }

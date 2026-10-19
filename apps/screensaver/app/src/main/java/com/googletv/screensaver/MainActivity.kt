@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private lateinit var albumSummary: TextView
     private lateinit var albumError: TextView
     private lateinit var typeNote: TextView
+    private lateinit var intervalNote: TextView
     private lateinit var layoutNote: TextView
     private lateinit var settingsStatus: TextView
     private val choiceButtons = mutableMapOf<String, List<Button>>()
@@ -248,6 +249,12 @@ class MainActivity : Activity() {
             intervalPreset = it
             refreshSettingsControls()
         } })
+        intervalNote = text("", 12f, false).apply {
+            setTextColor(Color.rgb(170, 184, 199))
+            setPadding(dp(165), 0, 0, dp(3))
+            visibility = View.GONE
+        }
+        settingsTable.addView(intervalNote, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
         val layout = addChoiceRow("Layout", "layout", LayoutMode.all.map { mode -> mode.label to {
             layoutMode = mode
             refreshSettingsControls()
@@ -319,6 +326,9 @@ class MainActivity : Activity() {
         val note = MediaTypeRules.typeNote(mediaType)
         typeNote.text = note.orEmpty()
         typeNote.visibility = if (note != null) View.VISIBLE else View.GONE
+        val videoIntervalNote = MediaTypeRules.videoIntervalNote(mediaType)
+        intervalNote.text = videoIntervalNote.orEmpty()
+        intervalNote.visibility = if (videoIntervalNote != null) View.VISIBLE else View.GONE
     }
 
     private fun focusChoice(key: String, index: Int) {

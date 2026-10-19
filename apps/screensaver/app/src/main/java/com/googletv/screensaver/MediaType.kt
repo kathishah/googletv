@@ -98,5 +98,9 @@ object MediaTypeRules {
     fun typeNote(type: MediaType): String? =
         if (type.includesVideos) "Videos play in the app slideshow only. The screensaver shows $DREAM_FALLBACK_POOL random photos." else null
 
+    /** Note under the Interval row, or null when the selected type contains photos only. */
+    fun videoIntervalNote(type: MediaType): String? =
+        if (type.includesVideos) "Videos play to the end, up to 60 s" else null
+
     private fun videoText(count: Int): String = if (count == 1) "1 video" else "$count videos"
 }
