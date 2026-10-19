@@ -18,7 +18,7 @@ internal data class RemoteFileInfo(val size: Long, val modifiedMillis: Long)
 
 /** Read-only view of the Photos database files on the share. */
 internal interface RemoteDatabaseFiles {
-    /** Null when the file does not exist or cannot be read. */
+    /** Null only when the file is confirmed absent; throw when its presence or metadata is unclear. */
     fun stat(file: DatabaseFile): RemoteFileInfo?
 
     /** Opens [file] for sequential reading starting at [offset]. */
@@ -83,7 +83,8 @@ internal class DatabaseStage(private val directory: File) {
         }
         val database = timings.time("stat") { remote.stat(DatabaseFile.DATABASE) }
             ?: throw AlbumIndexException("The Photos database is missing or unreadable on the share. Check the library path and read-only access.")
-        val wal = timings.time("stat") { remote.stat(DatabaseFile.WAL) }?.takeIf { it.size >= WalFrameScanner.WAL_HEADER_BYTES }
+        val wal = timings.time("stat") { remote.stat(DatabaseFile.WAL) }
+        if (wal != null && wal.size < WalFrameScanner.WAL_HEADER_BYTES) throw walUnreadable()
         val walHeader = wal?.let { timings.time("stat") { readRange(remote, DatabaseFile.WAL, 0L, WalFrameScanner.WAL_HEADER_BYTES) } }
         if (wal != null && walHeader == null) throw walUnreadable()
 
@@ -129,8 +130,11 @@ internal class DatabaseStage(private val directory: File) {
 
             timings.time("verify") {
                 val databaseAfter = remote.stat(DatabaseFile.DATABASE)
-                val headerAfter = if (wal != null) readRange(remote, DatabaseFile.WAL, 0L, WalFrameScanner.WAL_HEADER_BYTES) else null
-                if (databaseAfter != database || (walHeader != null && (headerAfter == null || !headerAfter.contentEquals(walHeader)))) {
+                val walAfter = remote.stat(DatabaseFile.WAL)
+                val headerAfter = if (walAfter != null) readRange(remote, DatabaseFile.WAL, 0L, WalFrameScanner.WAL_HEADER_BYTES) else null
+                if (databaseAfter != database || walAfter != wal ||
+                    (walHeader != null && (headerAfter == null || !headerAfter.contentEquals(walHeader)))
+                ) {
                     throw AlbumIndexException("The Photos library changed on the Mac while it was being copied. Try Refresh again once the Mac has finished.")
                 }
             }
@@ -232,6 +236,7 @@ internal class DatabaseStage(private val directory: File) {
                 }
             }
         }
+        if (offset < info.size && !scanner.ended) throw walUnreadable()
         return offset - resumeFrom
     }
 

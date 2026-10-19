@@ -305,14 +305,19 @@ class SmbGuestPhotoSource(
 
         // A directory listing returns size and modification time together and is the same kind of
         // call the photo listing already makes as Guest; per-file attribute queries were denied.
+        // Only explicit not-found statuses mean absent; other per-file errors leave the snapshot unclear.
         override fun stat(file: DatabaseFile): RemoteFileInfo? = try {
             diskShare.list("$libraryPath\\database", file.localName)
                 .firstOrNull { it.fileName.equals(file.localName, ignoreCase = true) }
                 ?.let { RemoteFileInfo(it.endOfFile, it.lastWriteTime.toEpochMillis()) }
         } catch (error: Throwable) {
-            val kind = error.smbFailureKind()
-            Log.w(LOG_TAG, "Listing of ${file.name} failed as $kind (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
-            if (kind == SmbFailureKind.PER_FILE) null else throw error
+            if (error.isMissingRemoteFile()) {
+                null
+            } else {
+                val kind = error.smbFailureKind()
+                Log.w(LOG_TAG, "Listing of ${file.name} failed as $kind (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
+                throw error
+            }
         }
 
         override fun openStream(file: DatabaseFile, offset: Long): InputStream =

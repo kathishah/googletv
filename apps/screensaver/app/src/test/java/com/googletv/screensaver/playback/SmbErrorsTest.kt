@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import com.hierynomus.mserref.NtStatus
 
 class SmbErrorsTest {
     @Test
@@ -32,6 +33,14 @@ class SmbErrorsTest {
         assertFalse(SmbFailureKind.TRANSIENT.shouldReconnectReusedConnection(reused = false))
         assertTrue(SmbFailureKind.TRANSIENT.shouldReconnectReusedConnection(reused = true))
         assertFalse(SmbFailureKind.PER_FILE.shouldReconnectReusedConnection(reused = true))
+    }
+
+    @Test
+    fun onlyExplicitNotFoundStatusesMeanTheWalIsAbsent() {
+        assertTrue(NtStatus.STATUS_OBJECT_NAME_NOT_FOUND.isMissingRemoteFile())
+        assertTrue(NtStatus.STATUS_OBJECT_PATH_NOT_FOUND.isMissingRemoteFile())
+        assertTrue(NtStatus.STATUS_NO_SUCH_FILE.isMissingRemoteFile())
+        assertFalse(NtStatus.STATUS_ACCESS_DENIED.isMissingRemoteFile())
     }
 
     @Test

@@ -40,6 +40,12 @@ internal fun SmbFailureKind.shouldDiscardConnection(): Boolean = this != SmbFail
 internal fun SmbFailureKind.shouldReconnectReusedConnection(reused: Boolean): Boolean =
     reused && this == SmbFailureKind.TRANSIENT
 
+/** Only these statuses establish that a database sidecar is genuinely absent. */
+internal fun com.hierynomus.mserref.NtStatus.isMissingRemoteFile(): Boolean = this in MISSING_FILE_STATUSES
+
+internal fun Throwable.isMissingRemoteFile(): Boolean =
+    causes().filterIsInstance<SMBApiException>().any { it.status.isMissingRemoteFile() }
+
 internal fun Throwable.smbFailureKind(): SmbFailureKind {
     val chain = causes()
     if (chain.any { it is SMB2GuestSigningRequiredException || it is SmbConfigurationException }) {
@@ -68,6 +74,12 @@ private val CONFIGURATION_STATUSES = setOf(
     NtStatus.STATUS_ACCOUNT_DISABLED,
     NtStatus.STATUS_BAD_NETWORK_NAME,
     NtStatus.STATUS_BAD_NETWORK_PATH,
+)
+
+private val MISSING_FILE_STATUSES = setOf(
+    NtStatus.STATUS_OBJECT_NAME_NOT_FOUND,
+    NtStatus.STATUS_OBJECT_PATH_NOT_FOUND,
+    NtStatus.STATUS_NO_SUCH_FILE,
 )
 
 private val TRANSIENT_STATUSES = setOf(

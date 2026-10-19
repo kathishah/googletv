@@ -121,6 +121,115 @@ class DatabaseStageTest {
     }
 
     @Test
+    fun earlyWalEofRollsBackAndRetryResumesAtCommittedPrefix() {
+        val first = WalBuilder.wal(header, WalBuilder.frame(1, 1))
+        val remote = FakeRemote(database(1), 100L, first, 200L)
+        sync(remote)
+        val prefix = 32L + frameBytes
+        val grown = WalBuilder.wal(first, WalBuilder.frame(2, 2), WalBuilder.frame(3, 3))
+        remote.wal = grown
+        remote.walModified = 300L
+        val short = object : RemoteDatabaseFiles {
+            override fun stat(file: DatabaseFile): RemoteFileInfo? = remote.stat(file)
+
+            override fun openStream(file: DatabaseFile, offset: Long): InputStream {
+                val source = remote.openStream(file, offset)
+                if (file != DatabaseFile.WAL || offset != prefix) return source
+                return object : FilterInputStream(source) {
+                    private var delivered = 0
+                    override fun read(buffer: ByteArray, off: Int, len: Int): Int {
+                        if (delivered >= 200) return -1
+                        val count = super.read(buffer, off, minOf(len, 200 - delivered))
+                        if (count > 0) delivered += count
+                        return count
+                    }
+                }
+            }
+        }
+
+        try {
+            sync(short)
+            fail("expected the short WAL stream to be rejected")
+        } catch (expected: AlbumIndexException) {
+            assertTrue(expected.message!!.contains("log"))
+        }
+        assertEquals(prefix, localWal().size.toLong())
+
+        val retry = sync(remote)
+        assertEquals(prefix, retry.walResumedFrom)
+        assertEquals(2 * frameBytes, retry.walBytesFetched)
+        assertArrayEquals(grown, localWal())
+    }
+
+    @Test
+    fun walChangedBetweenCopyAndVerificationIsRejectedAndRetrySucceeds() {
+        val remote = FakeRemote(database(1), 100L, WalBuilder.wal(header, WalBuilder.frame(1, 1)), 200L)
+        var walOpens = 0
+        val changing = object : RemoteDatabaseFiles {
+            override fun stat(file: DatabaseFile): RemoteFileInfo? = remote.stat(file)
+
+            override fun openStream(file: DatabaseFile, offset: Long): InputStream {
+                val source = remote.openStream(file, offset)
+                if (file == DatabaseFile.WAL && offset == 0L && ++walOpens == 2) remote.walModified += 1L
+                return source
+            }
+        }
+
+        try {
+            sync(changing)
+            fail("expected a changed WAL snapshot to be rejected")
+        } catch (expected: AlbumIndexException) {
+            assertTrue(expected.message!!.contains("changed"))
+        }
+        assertFalse(File(stageDirectory, "sync-state.properties").exists())
+
+        val retry = sync(remote)
+        assertFalse(retry.reusedDatabase)
+        assertArrayEquals(remote.wal, localWal())
+    }
+
+    @Test
+    fun unclearWalListingPreservesPreviouslyCommittedSnapshot() {
+        val remote = FakeRemote(database(1), 100L, WalBuilder.wal(header, WalBuilder.frame(1, 1)), 200L)
+        sync(remote)
+        val committedWal = localWal()
+        val unclear = object : RemoteDatabaseFiles {
+            override fun stat(file: DatabaseFile): RemoteFileInfo? {
+                if (file == DatabaseFile.WAL) throw IOException("listing unavailable")
+                return remote.stat(file)
+            }
+
+            override fun openStream(file: DatabaseFile, offset: Long): InputStream = remote.openStream(file, offset)
+        }
+
+        try {
+            sync(unclear)
+            fail("expected an unclear WAL listing to be rejected")
+        } catch (expected: IOException) {
+            assertEquals("listing unavailable", expected.message)
+        }
+        assertArrayEquals(committedWal, localWal())
+        assertTrue(sync(remote).unchanged)
+    }
+
+    @Test
+    fun existingWalShorterThanHeaderIsNotTreatedAsMissing() {
+        val remote = FakeRemote(database(1), 100L, ByteArray(16), 200L)
+        try {
+            sync(remote)
+            fail("expected the short WAL to be rejected")
+        } catch (expected: AlbumIndexException) {
+            assertTrue(expected.message!!.contains("log"))
+        }
+        assertFalse(File(stageDirectory, "sync-state.properties").exists())
+
+        remote.wal = WalBuilder.wal(header, WalBuilder.frame(1, 1))
+        val retry = sync(remote)
+        assertArrayEquals(remote.wal, localWal())
+        assertFalse(retry.reusedDatabase)
+    }
+
+    @Test
     fun uncommittedTailIsFetchedAgainAfterItIsOverwritten() {
         val committed = WalBuilder.wal(header, WalBuilder.frame(1, 1))
         val remote = FakeRemote(database(1), 100L, WalBuilder.wal(committed, WalBuilder.frame(2, 0)), 200L)
