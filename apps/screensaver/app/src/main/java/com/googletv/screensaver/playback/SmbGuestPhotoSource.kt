@@ -98,7 +98,11 @@ class SmbGuestPhotoSource(
 
     override fun loadSlides(): List<Slide> {
         if (selectedAlbumMode) return loadSelectedAlbumSlides()
-        if (!mediaType.includesVideos) return walkPhotoSlides(poolSize, savedExclusion()).first
+        if (!mediaType.includesVideos) {
+            val photos = walkPhotoSlides(poolSize, savedExclusion()).first
+            checkSampleReadable(photos.map { it.id })
+            return photos
+        }
         return loadLibrarySlidesWithVideos()
     }
 
@@ -141,6 +145,7 @@ class SmbGuestPhotoSource(
         }
         // The walk comes first: the library's photo count decides how many slots videos get.
         val (photos, photoCount) = walkPhotoSlides(poolSize, PathSet(index.excludedPaths))
+        checkSampleReadable(photos.map { it.id })
         val videoCount = SlideMixer.videoSlots(poolSize, libraryVideos.size, photoCount)
         val videos = SlideMixer.pickVideos(libraryVideos, videoCount).map(::videoSlide)
         return SlideMixer.shuffleTogether(photos.shuffled().take((poolSize - videos.size).coerceAtLeast(0)), videos)

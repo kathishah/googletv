@@ -553,7 +553,9 @@ class SlideshowPlayer internal constructor(
         slides.removeAt(index)
         if (slides.isEmpty()) {
             scheduler.stop()
-            showError("Could not load any photos. They may be unavailable or unsupported.")
+            runDelayed(backoffMillis(0)) {
+                if (isCurrent(runGeneration)) requestListing(runGeneration, attempt = 0)
+            }
             return
         }
 

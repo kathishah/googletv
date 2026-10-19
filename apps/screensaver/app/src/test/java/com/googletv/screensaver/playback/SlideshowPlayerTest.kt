@@ -130,6 +130,55 @@ class SlideshowPlayerTest {
         player.dispose()
     }
 
+    @Test
+    fun poolExhaustionRetriesListingThenShowsStoredPhotos() {
+        var listingCalls = 0
+        val source = FixturePhotoSource(
+            slides = listOf(photo("1"), photo("2"), photo("3")),
+            listing = {
+                listingCalls++
+                if (listingCalls == 1) listOf(photo("1"), photo("2"), photo("3"))
+                else throw ShareUnreadableException(ReadableSample.SIZE)
+            },
+            image = { throw IllegalStateException("per-file refusal") },
+        )
+        val fallback = FixturePhotoSource(listOf(photo("fallback")))
+        val callbacks = QueuedCallbacks()
+        val shown = mutableListOf<String>()
+        val player = fixturePlayer(source, callbacks, FixtureVideoStage(), shown, fallback)
+        player.start()
+        callbacks.runPosted()
+        assertTrue(shown.isEmpty())
+
+        repeat(3) {
+            callbacks.runNextDelayed()
+            callbacks.runPosted()
+        }
+
+        assertEquals(4, listingCalls)
+        assertEquals(listOf("fallback"), shown)
+        player.dispose()
+    }
+
+    @Test
+    fun aPerFileFailureIsStillSkippedWhenOtherPhotosRemain() {
+        val source = FixturePhotoSource(
+            slides = listOf(photo("bad"), photo("good")),
+            image = { slide ->
+                if (slide.id == "bad") throw IllegalStateException("unreadable")
+                LoadedPhoto(testBitmap(), slide.id)
+            },
+        )
+        val callbacks = QueuedCallbacks()
+        val shown = mutableListOf<String>()
+        val player = fixturePlayer(source, callbacks, FixtureVideoStage(), shown)
+        player.start()
+        callbacks.runPosted()
+
+        assertEquals(listOf("good"), shown)
+        player.dispose()
+    }
+
     private data class VideoFixture(
         val player: SlideshowPlayer,
         val callbacks: QueuedCallbacks,
@@ -149,6 +198,7 @@ class SlideshowPlayerTest {
         callbacks: QueuedCallbacks,
         stage: FixtureVideoStage,
         shown: MutableList<String> = mutableListOf(),
+        fallback: PhotoSource? = null,
     ): SlideshowPlayer = SlideshowPlayer(
         photoSource = source,
         intervalMillis = { 1_000L },
@@ -156,6 +206,7 @@ class SlideshowPlayerTest {
         showLoading = {},
         showEmptyState = {},
         showError = { error("Unexpected player error: $it") },
+        fallbackSource = fallback,
         videoStage = stage,
         callbacks = callbacks,
         worker = DirectExecutorService(),
@@ -164,14 +215,18 @@ class SlideshowPlayerTest {
         logger = QuietPlayerLogger,
     )
 
-    private class FixturePhotoSource(private val slides: List<Slide>) : PhotoSource {
+    private class FixturePhotoSource(
+        private val slides: List<Slide>,
+        private val listing: (() -> List<Slide>)? = null,
+        private val image: ((Slide) -> LoadedPhoto)? = null,
+    ) : PhotoSource {
         val loadedPhotos = mutableListOf<String>()
 
-        override fun loadSlides(): List<Slide> = slides
+        override fun loadSlides(): List<Slide> = listing?.invoke() ?: slides
 
         override fun loadImage(slide: Slide): LoadedPhoto {
             loadedPhotos += slide.id
-            return LoadedPhoto(testBitmap(), slide.id)
+            return image?.invoke(slide) ?: LoadedPhoto(testBitmap(), slide.id)
         }
 
         override fun prepareVideo(slide: Slide): PreparedVideo {
