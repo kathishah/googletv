@@ -118,9 +118,9 @@ Instead of black, the free space is divided into **three equal slices: left, mid
 
 ## Data
 
-### Catalog version 5
+### Catalog version 6
 
-`PhotosAlbumCatalog.VERSION` becomes 5. It adds one top-level list, `portrait`: the safe `originals`-relative path of every active photo whose displayed aspect is in the pairable band. Like `excluded`, it is looked up case-insensitively with either slash (the same helper, generalized and renamed from `PhotoExclusion` to `PathSet`). A catalog with another version is rejected and rebuilt on the next picker open or refresh, as for the version 3 to 4 change.
+`PhotosAlbumCatalog.VERSION` is 6. Version 5 added one top-level list, `portrait`: the safe `originals`-relative path of every active photo whose displayed aspect is in the pairable band. Version 6 changes only the exclusion query so classified photos remain in `excluded` when Photos marks them trashed; an original may still remain in the tree walked by All mode. The portrait list still contains active photos only. Like `excluded`, `portrait` is looked up case-insensitively with either slash (the same helper, generalized and renamed from `PhotoExclusion` to `PathSet`). A catalog with another version is rejected and rebuilt on the next picker open or refresh, as for the version 3 to 4 change.
 
 - **Query.** One more pass over `ZASSET` joined to `ZADDITIONALASSETATTRIBUTES`, in the same read as the other queries: `ZKIND=0`, `ZTRASHEDSTATE=0`, not a shared-album copy (`ZSAVEDASSETTYPE<>4`), positive original width and height, displayed aspect `(orientation in 5..8 ? height ÷ width : width ÷ height)` between 0.56 and 0.9 (a `CASE` in the SQL, repeated in `PortraitRules` so the rule is unit-tested). Excluded photos (screenshots, documents, receipts) are left out of the list by the mapper.
 - **Size (measured on the TV).** 7,712 paths: the catalog went from 2,207,985 to 2,570,455 bytes (+0.36 MB), and a cached read takes 2.2 to 2.4 s (v2 measured 2.3 to 2.8 s during a refresh, so no visible change). The new query takes 10.4 s on the TV inside a 63.8 s refresh (the other 40 s is SQLite's first read building the WAL index, as before).

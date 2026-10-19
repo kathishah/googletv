@@ -58,7 +58,8 @@ class PhotosAlbumCatalogJsonTest {
         assertRejected(json { it.put("version", 2) }) // version 2 listed shared-album videos that cannot play
         assertRejected(json { it.put("version", 3) }) // version 3 had no exclusion list
         assertRejected(json { it.put("version", 4) }) // version 4 had no portrait list
-        assertEquals(5, PhotosAlbumCatalog.VERSION)
+        assertRejected(json { it.put("version", 5) }) // version 5 excluded only active classified assets
+        assertEquals(6, PhotosAlbumCatalog.VERSION)
     }
 
     @Test

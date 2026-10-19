@@ -21,7 +21,8 @@ internal object PhotosAlbumCatalog {
     // Version 4 adds `excluded`, the photos the slideshow never shows (screenshots, documents,
     // receipts), and drops them from every album's `paths`.
     // Version 5 adds `portrait`, the photos whose displayed shape allows pairing two on one slide.
-    internal const val VERSION = 5
+    // Version 6 retains exclusions for trashed assets because their originals can remain on disk.
+    internal const val VERSION = 6
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
 
     /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
@@ -171,7 +172,7 @@ internal object PhotosAlbumCatalog {
                 database.rawQuery(
                     """SELECT a.ZDIRECTORY, a.ZFILENAME
                        FROM ZASSET a
-                       WHERE a.ZKIND=0 AND a.ZTRASHEDSTATE=0 AND (a.ZISDETECTEDSCREENSHOT=1 OR a.Z_PK IN (
+                       WHERE a.ZKIND=0 AND (a.ZISDETECTEDSCREENSHOT=1 OR a.Z_PK IN (
                            SELECT y.ZASSET
                            FROM ZSCENECLASSIFICATION c JOIN ZADDITIONALASSETATTRIBUTES y ON y.Z_PK=c.ZASSETATTRIBUTES
                            WHERE c.ZCLASSIFICATIONTYPE=0 AND (
