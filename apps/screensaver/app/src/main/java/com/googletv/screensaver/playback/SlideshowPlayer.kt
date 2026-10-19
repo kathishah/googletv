@@ -403,7 +403,7 @@ class SlideshowPlayer internal constructor(
             val result = runCatching { photoSource.prepareVideo(slide) }
             callbacks.post {
                 if (!isCurrent(runGeneration)) {
-                    result.getOrNull()?.close()
+                    result.getOrNull()?.closeAsync()
                     return@post
                 }
                 loadingImage = false
@@ -426,7 +426,7 @@ class SlideshowPlayer internal constructor(
     private fun beginVideo(slide: Slide, video: PreparedVideo, stage: VideoStage, runGeneration: Int) {
         val index = slides.indexOf(slide)
         if (index < 0) {
-            video.close()
+            video.closeAsync()
             return
         }
         exitFallback()

@@ -13,6 +13,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -272,6 +273,95 @@ class ProgressiveReaderTest {
         } catch (_: IOException) {
         }
         reader.close() // idempotent
+    }
+
+    @Test
+    fun interruptedCloseStillDeletesTheCacheAndRestoresInterruptStatus() {
+        val enteredRead = CountDownLatch(1)
+        val releaseRead = CountDownLatch(1)
+        val abortCalled = CountDownLatch(1)
+        val remote = object : RemoteVideoFile {
+            override val sizeBytes = 10_500L
+            override fun readAt(offset: Long, buffer: ByteArray, bufferOffset: Int, length: Int): Int {
+                enteredRead.countDown()
+                releaseRead.await()
+                throw IOException("released")
+            }
+            override fun abort() { abortCalled.countDown() }
+        }
+        val file = File(temporaryFolder.root, "interrupted-close.part")
+        val reader = ProgressiveReader(
+            remote, File(temporaryFolder.root, "interrupted-close.part"), 10.0, config(), clock::now,
+            rateMemory = LinkRateMemory(),
+        )
+        reader.start()
+        assertTrue(enteredRead.await(2, TimeUnit.SECONDS))
+        val restoredInterrupt = AtomicBoolean(false)
+        val closer = Thread {
+            reader.close()
+            restoredInterrupt.set(Thread.currentThread().isInterrupted)
+        }
+        closer.start()
+        assertTrue(abortCalled.await(2, TimeUnit.SECONDS))
+        closer.interrupt()
+        closer.join(2_000)
+        releaseRead.countDown()
+
+        assertFalse("closer should finish without waiting for the reader", closer.isAlive)
+        assertTrue("interrupt status should be restored", restoredInterrupt.get())
+        assertFalse("cache file should be removed in finally", file.exists())
+    }
+
+    @Test
+    fun closeAsyncReturnsWithoutWaitingForReaderShutdown() {
+        val enteredRead = CountDownLatch(1)
+        val releaseRead = CountDownLatch(1)
+        val abortCalled = CountDownLatch(1)
+        val remote = object : RemoteVideoFile {
+            override val sizeBytes = 10_500L
+            override fun readAt(offset: Long, buffer: ByteArray, bufferOffset: Int, length: Int): Int {
+                enteredRead.countDown()
+                releaseRead.await()
+                throw IOException("released")
+            }
+            override fun abort() {
+                abortCalled.countDown()
+                releaseRead.countDown()
+            }
+        }
+        val file = File(temporaryFolder.root, "async-close.part")
+        val reader = ProgressiveReader(remote, file, 10.0, config(), clock::now, rateMemory = LinkRateMemory())
+        reader.start()
+        assertTrue(enteredRead.await(2, TimeUnit.SECONDS))
+        val began = System.nanoTime()
+
+        reader.closeAsync()
+
+        assertTrue("closeAsync blocked ${(System.nanoTime() - began) / 1_000_000} ms",
+            System.nanoTime() - began < TimeUnit.MILLISECONDS.toNanos(250))
+        assertTrue(abortCalled.await(2, TimeUnit.SECONDS))
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (file.exists() && System.nanoTime() < deadline) Thread.sleep(5)
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun closingTwiceRecordsTheClipRateOnlyOnce() {
+        val memory = LinkRateMemory()
+        val reader = ProgressiveReader(
+            FakeRemoteVideo(bytes(10_500), clock),
+            File(temporaryFolder.root, "close-twice.part"),
+            10.0,
+            config().copy(minBytesToRemember = 0L),
+            clock::now,
+            rateMemory = memory,
+        ).also { it.start() }
+        awaitAllFetched(reader, 10_500)
+
+        reader.close()
+        reader.close()
+
+        assertEquals(1, memory.sampleCount())
     }
 
     @Test

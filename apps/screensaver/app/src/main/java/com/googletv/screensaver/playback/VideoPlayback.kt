@@ -15,6 +15,9 @@ class PreparedVideo internal constructor(
     internal fun mediaDataSource(): MediaDataSource = ProgressiveMediaDataSource(reader)
 
     fun close() = reader.close()
+
+    /** Use when disposing from the playback/UI thread; the reader join and file cleanup happen off-thread. */
+    fun closeAsync() = reader.closeAsync()
 }
 
 /** Why a clip stopped. [UNPLAYABLE] clips are dropped from the pool; [STALLED] ones are retried later. */

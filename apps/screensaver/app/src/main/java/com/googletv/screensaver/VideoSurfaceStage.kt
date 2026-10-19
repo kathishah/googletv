@@ -148,7 +148,7 @@ class VideoSurfaceStage(private val view: SlideshowView) : VideoStage {
             }
             player = null
             val stats = reader.stats()
-            video.close()
+            video.closeAsync()
             Log.i(
                 LOG_TAG,
                 "Video ${if (failure == null) "finished" else "failed ($failure)"} after ${SystemClock.elapsedRealtime() - beganAt} ms: " +

@@ -8,6 +8,7 @@ import java.nio.channels.FileChannel
 import java.util.ArrayDeque
 import java.util.BitSet
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -78,6 +79,9 @@ internal class LinkRateMemory(private val keep: Int = 3) {
     @Synchronized
     fun estimate(): Double? = recent.minOrNull()
 
+    @Synchronized
+    fun sampleCount(): Int = recent.size
+
     companion object {
         val shared = LinkRateMemory()
     }
@@ -130,6 +134,7 @@ internal class ProgressiveReader(
     private var thread: Thread? = null
     private var file: RandomAccessFile? = null
     private var channel: FileChannel? = null
+    private val closeStarted = AtomicBoolean(false)
 
     init {
         require(sizeBytes > 0 && durationSeconds > 0.0 && durationSeconds.isFinite()) { "A clip needs a positive size and duration." }
@@ -359,22 +364,47 @@ internal class ProgressiveReader(
 
     /** Stops the reader, aborts any read in flight, and deletes the temp file. Safe to call more than once. */
     fun close() {
-        lock.withLock {
-            stopped = true
-            changed.signalAll()
+        if (!closeStarted.compareAndSet(false, true)) return
+        closeClaimed()
+    }
+
+    private fun closeClaimed() {
+        var interrupted = false
+        try {
+            lock.withLock {
+                stopped = true
+                changed.signalAll()
+            }
+            runCatching { remote.abort() }
+            try {
+                thread?.join(3_000L)
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        } finally {
+            try {
+                // closeStarted also guarantees this sample is recorded at most once.
+                lock.withLock {
+                    val seconds = (readNanos + writeNanos) / 1e9
+                    if (bytesFetched >= config.minBytesToRemember && seconds > 0) {
+                        rateMemory.record(bytesFetched / seconds)
+                    }
+                }
+            } finally {
+                runCatching { channel?.close() }
+                runCatching { file?.close() }
+                channel = null
+                file = null
+                runCatching { cacheFile.delete() }
+                if (interrupted) Thread.currentThread().interrupt()
+            }
         }
-        remote.abort()
-        thread?.join(3_000L)
-        // Remember this clip's overall pace for the next one, if it moved enough data to mean anything.
-        lock.withLock {
-            val seconds = (readNanos + writeNanos) / 1e9
-            if (bytesFetched >= config.minBytesToRemember && seconds > 0) rateMemory.record(bytesFetched / seconds)
-        }
-        runCatching { channel?.close() }
-        runCatching { file?.close() }
-        channel = null
-        file = null
-        cacheFile.delete()
+    }
+
+    /** Runs blocking reader shutdown and local file cleanup away from the playback/UI thread. */
+    fun closeAsync() {
+        if (!closeStarted.compareAndSet(false, true)) return
+        Thread(::closeClaimed, "video-reader-close").apply { isDaemon = true }.start()
     }
 
     companion object {
