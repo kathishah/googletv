@@ -83,22 +83,16 @@ class SmbGuestPhotoSource(
     /** What the in-app slideshow plays. The screensaver always passes [MediaType.PHOTOS]. */
     private val mediaType: MediaType = MediaType.PHOTOS,
 ) : PhotoSource {
-    private val host = config.host.trim()
-    private val shareName = config.share.trim()
-    private val rootPath = normalizeRelativePath(config.rootPath)
+    private val validatedConfig = config.validated()
+    private val host = validatedConfig.host
+    private val shareName = validatedConfig.share
+    private val rootPath = validatedConfig.rootPath
     private val videoCacheDirectory = java.io.File(fallbackCacheDirectory, "video-cache")
     private val connectionLock = Any()
     private var connection: SmbConnection? = null
     private val epoch = AtomicInteger()
 
     init {
-        require(host.isNotEmpty() && '/' !in host && '\\' !in host && '@' !in host) {
-            "Enter a valid SMB server address."
-        }
-        require(shareName.isNotEmpty() && '/' !in shareName && '\\' !in shareName) {
-            "Enter a valid SMB share name."
-        }
-        require(rootPath.isNotEmpty()) { "Enter a folder path inside the SMB share." }
         require(poolSize > 0)
     }
 
@@ -646,14 +640,6 @@ class SmbGuestPhotoSource(
             runCatching { connection.close() }
             runCatching { client.close() }
         }
-    }
-
-    private fun normalizeRelativePath(path: String): String {
-        val segments = path.trim().replace('/', '\\').trim('\\').split('\\')
-        require(segments.isNotEmpty() && segments.none { it.isBlank() || it == "." || it == ".." }) {
-            "Enter a folder path inside the SMB share."
-        }
-        return segments.joinToString("\\")
     }
 
     private fun isSupportedPhoto(filename: String): Boolean {

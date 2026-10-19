@@ -25,6 +25,7 @@ import com.googletv.screensaver.playback.SlideshowPlayer
 import com.googletv.screensaver.playback.AlbumEntry
 import com.googletv.screensaver.playback.AlbumCatalogProgress
 import com.googletv.screensaver.playback.SmbGuestPhotoSource
+import com.googletv.screensaver.playback.validated
 import java.util.concurrent.Executors
 import android.graphics.Bitmap
 import java.io.File
@@ -353,6 +354,7 @@ class MainActivity : Activity() {
     private fun saveDraft(): Boolean {
         saveSmbDraftFromFields()
         return runCatching {
+            if (sourceMode == PhotoSourceMode.SMB_GUEST) draftSmbConfig.validated()
             preferences.setPhotoSourceMode(sourceMode)
             preferences.setPhotoSelectionMode(selectionMode)
             preferences.setMediaType(mediaType)

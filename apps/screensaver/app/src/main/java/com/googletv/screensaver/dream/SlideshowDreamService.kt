@@ -10,7 +10,7 @@ import com.googletv.screensaver.playback.SlideshowPlayer
 
 class SlideshowDreamService : DreamService() {
     private lateinit var slideshowView: SlideshowView
-    private lateinit var player: SlideshowPlayer
+    private var player: SlideshowPlayer? = null
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -20,33 +20,38 @@ class SlideshowDreamService : DreamService() {
 
         slideshowView = SlideshowView(this)
         setContentView(slideshowView)
-        player = SlideshowPlayer(
-            photoSource = PhotoSourceFactory.create(this, SlideshowPreferences(this), forDream = true),
-            intervalMillis = SlideshowPreferences(this)::intervalMillis,
-            showSlide = slideshowView::show,
-            showLoading = slideshowView::showLoadingState,
-            showEmptyState = slideshowView::showEmptyState,
-            showError = slideshowView::showErrorState,
-            fallbackSource = PhotoSourceFactory.createFallback(this, SlideshowPreferences(this)),
-            // Layout applies to the screensaver too: its photos are photos only, so pairs always apply.
-            pairing = if (SlideshowPreferences(this).layoutMode() == LayoutMode.PORTRAIT_PAIRS) {
-                PairingConfig(slideshowView::showPair, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
-            } else null,
-        )
+        val preferences = SlideshowPreferences(this)
+        try {
+            player = SlideshowPlayer(
+                photoSource = PhotoSourceFactory.create(this, preferences, forDream = true),
+                intervalMillis = preferences::intervalMillis,
+                showSlide = slideshowView::show,
+                showLoading = slideshowView::showLoadingState,
+                showEmptyState = slideshowView::showEmptyState,
+                showError = slideshowView::showErrorState,
+                fallbackSource = PhotoSourceFactory.createFallback(this, preferences),
+                // Layout applies to the screensaver too: its photos are photos only, so pairs always apply.
+                pairing = if (preferences.layoutMode() == LayoutMode.PORTRAIT_PAIRS) {
+                    PairingConfig(slideshowView::showPair, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+                } else null,
+            )
+        } catch (error: IllegalArgumentException) {
+            slideshowView.showErrorState(error.message ?: getString(com.googletv.screensaver.R.string.smb_config_error))
+        }
     }
 
     override fun onDreamingStarted() {
         super.onDreamingStarted()
-        player.start()
+        player?.start()
     }
 
     override fun onDreamingStopped() {
-        player.stop()
+        player?.stop()
         super.onDreamingStopped()
     }
 
     override fun onDetachedFromWindow() {
-        if (::player.isInitialized) player.dispose()
+        player?.dispose()
         super.onDetachedFromWindow()
     }
 }
