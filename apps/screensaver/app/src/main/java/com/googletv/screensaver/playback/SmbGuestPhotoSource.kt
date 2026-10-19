@@ -353,9 +353,6 @@ class SmbGuestPhotoSource(
         if ((selectedAlbumIds - byId.keys).isNotEmpty()) {
             throw AlbumIndexException("A selected album is no longer in the index. Remove it in Choose albums or return to All photos.")
         }
-        if (mediaType == MediaType.PHOTOS && selectedAlbumIds.any { byId.getValue(it).paths.isEmpty() }) {
-            throw AlbumIndexException("One or more selected albums currently have no readable supported photos. Refresh the Mac index or remove that album in Choose albums.")
-        }
         val paths = linkedSetOf<String>()
         if (mediaType.includesPhotos) {
             // The catalog builder already leaves excluded photos out of album paths; checking again keeps
