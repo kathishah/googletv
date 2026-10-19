@@ -6,9 +6,9 @@ Status: **in progress, started 2026-10-18.** Milestones 1 to 5 (catalog v5, plan
 
 Add a **Layout** setting. **Single** is today's behavior and stays the default. **Portrait pairs** shows two portrait photos side by side on one slide, so a portrait photo no longer sits in the middle of the screen with wide black bars. Landscape photos stay full screen, one at a time, exactly as now.
 
-**Only portrait photos are paired** (the user's requirement): two photos share a slide only if both are portrait to begin with, so a pair never adds black space that a single photo would not have. The four-photo tile layout is **not** part of this spec; it is deferred.
+**Only portrait photos are paired** (the user's requirement): two photos share a slide only if both are portrait to begin with, so a pair never adds black space that a single photo would not have. The four-photo tile layout is **cancelled** (user decision, 2026-10-18).
 
-Not in v1: four-up tiles, pairing landscape or square photos, cropping to fill, pairing a photo with a video, transitions, a user-set gutter.
+Not built: four-up tiles (cancelled), pairing landscape or square photos, cropping to fill, pairing a photo with a video, transitions, a user-set gutter.
 
 ## Why: the black edges
 
@@ -151,7 +151,7 @@ Each milestone ends with its exit check on the TCL before the next starts. Comma
 
 User decisions, 2026-10-18:
 
-- **Only portrait photos are paired**; two photos share a slide only if both are portrait, so a pair never adds black space. Landscape photos stay full screen. Four-photo tiles are deferred.
+- **Only portrait photos are paired**; two photos share a slide only if both are portrait, so a pair never adds black space. Landscape photos stay full screen. Four-photo tiles are cancelled (2026-10-18, after Portrait pairs was reviewed on the TV and worked).
 - **The free space is split into three equal slices** (left, middle, right) holding a pattern or frame, instead of black.
 - **Styles:** pinstripes and diamond lattice are kept; the walnut frame and brass fillet mat were added as frame-like styles and the frame ideas were approved.
 - **Randomness:** not every portrait is paired, and the look of each pair is random (style, variant), never the same style twice in a row.
@@ -180,4 +180,5 @@ Recommended defaults are used above.
 - Whether the Layout row fits the settings screen without tightening spacing.
 - Whether pair frequency should be a setting (for example Rarely, Sometimes, Often) rather than a constant.
 - Whether a pair should avoid two photos from the same moment (for example two near-identical shots); not needed for v1, and the catalog has no burst information.
-- Four-up tiles are deferred; this spec's `PairFit` and the per-photo label placement should generalize to a grid when that work starts.
+- Closed: four-up tiles are cancelled, so `PairFit` does not need to generalize to a grid.
+- Closed by the user's review (2026-10-18): pairs look right and appear often enough; pair frequency stays a constant. A wider check of the HEIF offset fix, a network-failure check of pairs, and a smaller second decode for 24 MP pairs were judged not needed.
