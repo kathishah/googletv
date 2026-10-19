@@ -9,6 +9,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.FilterInputStream
+import java.io.IOException
+import java.io.InputStream
 
 class DatabaseStageTest {
     @get:Rule
@@ -74,6 +77,47 @@ class DatabaseStageTest {
         assertEquals(300L, second.walModifiedMillis)
         assertEquals(null, remote.served[DatabaseFile.DATABASE])
         assertFalse(second.unchanged)
+    }
+
+    @Test
+    fun failedWalAppendRollsBackToCommittedPrefixAndRetryResumesThere() {
+        val first = WalBuilder.wal(header, WalBuilder.frame(1, 1))
+        val remote = FakeRemote(database(1), 100L, first, 200L)
+        sync(remote)
+        val prefix = 32L + frameBytes
+        val grown = WalBuilder.wal(first, WalBuilder.frame(2, 2), WalBuilder.frame(3, 3))
+        remote.wal = grown
+        remote.walModified = 300L
+        val failing = object : RemoteDatabaseFiles {
+            override fun stat(file: DatabaseFile): RemoteFileInfo? = remote.stat(file)
+
+            override fun openStream(file: DatabaseFile, offset: Long): InputStream {
+                val source = remote.openStream(file, offset)
+                if (file != DatabaseFile.WAL || offset != prefix) return source
+                return object : FilterInputStream(source) {
+                    private var delivered = 0
+                    override fun read(buffer: ByteArray, off: Int, len: Int): Int {
+                        if (delivered >= 200) throw IOException("interrupted append")
+                        val count = super.read(buffer, off, minOf(len, 200 - delivered))
+                        if (count > 0) delivered += count
+                        return count
+                    }
+                }
+            }
+        }
+
+        try {
+            sync(failing)
+            fail("expected the append stream to fail")
+        } catch (expected: IOException) {
+            assertEquals("interrupted append", expected.message)
+        }
+        assertEquals(prefix, localWal().size.toLong())
+
+        val retry = sync(remote)
+        assertEquals(prefix, retry.walResumedFrom)
+        assertEquals(2 * frameBytes, retry.walBytesFetched)
+        assertArrayEquals(grown, localWal())
     }
 
     @Test

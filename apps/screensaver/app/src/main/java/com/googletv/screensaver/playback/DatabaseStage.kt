@@ -112,37 +112,74 @@ internal class DatabaseStage(private val directory: File) {
 
         var walFetched = 0L
         var committed = 0L
-        if (wal != null && walHeader != null) {
-            val scanner = if (resumeFrom > 0L) WalFrameScanner.resume(walHeader, resumeFrom) else WalFrameScanner.start()
-            walFetched = timings.time("wal_copy") { copyWal(remote, wal, resumeFrom, scanner, report) }
-            timings.addBytes("wal_copy", walFetched)
-            if (scanner.headerInvalid) throw walUnreadable()
-            committed = scanner.committedBytes
-            RandomAccessFile(walFile, "rw").use { it.setLength(committed) }
-        } else {
-            walFile.delete()
-        }
-
-        timings.time("verify") {
-            val databaseAfter = remote.stat(DatabaseFile.DATABASE)
-            val headerAfter = if (wal != null) readRange(remote, DatabaseFile.WAL, 0L, WalFrameScanner.WAL_HEADER_BYTES) else null
-            if (databaseAfter != database || (walHeader != null && (headerAfter == null || !headerAfter.contentEquals(walHeader)))) {
-                throw AlbumIndexException("The Photos library changed on the Mac while it was being copied. Try Refresh again once the Mac has finished.")
+        val rollback = if (resumeFrom > 0L && prior != null && walHeader != null) {
+            WalAppendRollback(prior, walHeader.copyOf(), resumeFrom)
+        } else null
+        try {
+            if (wal != null && walHeader != null) {
+                val scanner = if (resumeFrom > 0L) WalFrameScanner.resume(walHeader, resumeFrom) else WalFrameScanner.start()
+                walFetched = timings.time("wal_copy") { copyWal(remote, wal, resumeFrom, scanner, report) }
+                timings.addBytes("wal_copy", walFetched)
+                if (scanner.headerInvalid) throw walUnreadable()
+                committed = scanner.committedBytes
+                RandomAccessFile(walFile, "rw").use { it.setLength(committed) }
+            } else {
+                walFile.delete()
             }
+
+            timings.time("verify") {
+                val databaseAfter = remote.stat(DatabaseFile.DATABASE)
+                val headerAfter = if (wal != null) readRange(remote, DatabaseFile.WAL, 0L, WalFrameScanner.WAL_HEADER_BYTES) else null
+                if (databaseAfter != database || (walHeader != null && (headerAfter == null || !headerAfter.contentEquals(walHeader)))) {
+                    throw AlbumIndexException("The Photos library changed on the Mac while it was being copied. Try Refresh again once the Mac has finished.")
+                }
+            }
+            progress(total, total)
+            saveState(SyncState(database.size, database.modifiedMillis, walHeader?.let(::hex).orEmpty(), committed, wal?.modifiedMillis ?: 0L))
+            return SyncResult(
+                databaseFile = databaseFile,
+                databaseBytesFetched = databaseFetched,
+                walBytesFetched = walFetched,
+                reusedDatabase = reuseDatabase,
+                walResumedFrom = resumeFrom,
+                localWalBytes = committed,
+                databaseModifiedMillis = database.modifiedMillis,
+                walModifiedMillis = wal?.modifiedMillis,
+            )
+        } catch (error: Throwable) {
+            rollback?.let { rollbackAppendIfSafe(remote, it) }
+            throw error
         }
-        progress(total, total)
-        saveState(SyncState(database.size, database.modifiedMillis, walHeader?.let(::hex).orEmpty(), committed, wal?.modifiedMillis ?: 0L))
-        return SyncResult(
-            databaseFile = databaseFile,
-            databaseBytesFetched = databaseFetched,
-            walBytesFetched = walFetched,
-            reusedDatabase = reuseDatabase,
-            walResumedFrom = resumeFrom,
-            localWalBytes = committed,
-            databaseModifiedMillis = database.modifiedMillis,
-            walModifiedMillis = wal?.modifiedMillis,
-        )
     }
+
+    /** The saved prefix remains usable only if the database identity, WAL generation, and prefix still match. */
+    private fun rollbackAppendIfSafe(remote: RemoteDatabaseFiles, rollback: WalAppendRollback) {
+        val safe = runCatching {
+            val state = rollback.state
+            loadState() == state &&
+                databaseFile.length() == state.databaseSize &&
+                remote.stat(DatabaseFile.DATABASE) == RemoteFileInfo(state.databaseSize, state.databaseModified) &&
+                remote.stat(DatabaseFile.WAL)?.size?.let { it >= rollback.committedBytes } == true &&
+                readRange(remote, DatabaseFile.WAL, 0L, WalFrameScanner.WAL_HEADER_BYTES)
+                    ?.contentEquals(rollback.header) == true &&
+                walFile.length() >= rollback.committedBytes &&
+                RandomAccessFile(walFile, "r").use { local ->
+                    val localHeader = ByteArray(WalFrameScanner.WAL_HEADER_BYTES)
+                    local.readFully(localHeader)
+                    localHeader.contentEquals(rollback.header)
+                } &&
+                tailMatches(remote, rollback.header, rollback.committedBytes)
+        }.getOrDefault(false)
+        if (safe) runCatching {
+            RandomAccessFile(walFile, "rw").use { it.setLength(rollback.committedBytes) }
+        }
+    }
+
+    private data class WalAppendRollback(
+        val state: SyncState,
+        val header: ByteArray,
+        val committedBytes: Long,
+    )
 
     private fun copyDatabase(remote: RemoteDatabaseFiles, info: RemoteFileInfo, report: (Long) -> Unit): Long {
         val partial = File(directory, "${databaseFile.name}.part")
