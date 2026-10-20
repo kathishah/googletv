@@ -577,18 +577,21 @@ Built and installed the debug APK from the working tree after B12 and R05. Befor
 - **R02:** the baseline picker sweep raised PSS from about 88 MB to 203 MB (native heap from about 12 MB to 88 MB). A focused-cover-only cleanup was added, but the follow-up ADB sweep was slow and did not yield a stable after-idle measurement; PSS remained elevated during the interrupted run. **Decision (2026-10-19):** the user accepts the observed memory increase and the focused-card-only cover behavior; no further R02 memory work or repeat measurement is required. The saved selection remained 10 / 879.
 - **Builds:** the app JVM tests, debug APK, and lint passed after the resource/cancellation changes. The HEIF probe's Android native build also passed with RAII ownership for libheif contexts, handles, options, and tiles.
 
-### Accessibility semantics, B17 (2026-10-19)
+### Accessibility semantics, B17 and Step 6 focus checks (2026-10-19)
 
 - Settings choice buttons now expose the row and option in their accessible name, expose selected/not-selected node state, and provide a state description. SMB field labels are linked to their edit fields with `labelFor`.
-- **TV node check:** after installing the build, UIAutomator exposed `Interval, 10 secs` as selected and `Interval, 30 secs` as not selected; saved settings still showed 10 albums / 879 photos. TalkBack was installed but disabled, so audible TalkBack navigation remains part of the final Step 6 exit check.
+- **TV node check:** after installing the build, UIAutomator exposed `Interval, 10 secs` as selected and `Interval, 30 secs` as not selected. During a later TalkBack check, the accessibility event text included `Not selected. Type, Photos + Videos. Button` and `selected. Selected. Type, Photos. Button`. The TalkBack service bound, but Android logged that TTS was not ready when speech was attempted; audible output is therefore unverified. TalkBack was restored to its original disabled state (`enabled_accessibility_services` absent and `accessibility_enabled=0`).
+- **Keyboard:** with an SMB field focused, D-pad Right moved virtual-keyboard focus from `q` to `w`, Down moved it to `s`, and Back dismissed the keyboard while leaving the field focused. No field text was changed or saved.
+- **Refresh focus (R10):** in the picker, one Down from the initial state focused Refresh; Right/Left moved between Sort and Refresh; Down/Up moved between Refresh and an album card. Activating Refresh completed successfully and returned focus to the same album card. The user had changed the album selection before these checks; no album selection controls were activated during them.
+- **TV/build state:** app settings remained foregrounded; the installed build label was `1299efa5` (not dirty). Keyboard testing did not save SMB settings. The TV selection was left as the user had set it.
 - **Build:** 240 JVM tests passed; debug APK and lint passed.
 
 ### Settings saved state, large text and focus (2026-10-19)
 
 - **B16:** with an unsaved Layout change, changing the TV font scale to 1.2 triggered settings recreation. The draft Layout choice remained selected and the saved preference stayed `PORTRAIT_PAIRS`; Cancel restored the saved choice. Returning the font scale to its default also retained the saved 10 albums / 879 photos selection.
 - **R09:** the updated settings screen uses content-sized rows and buttons inside a vertical scroller. At font scale 1.2, all choice labels remained visible; repeated D-pad Down reached Preview, and scrolling placed Preview, Save and Cancel fully within the screen. Preview/Back returned focus to Preview. Font scale is restored to the default (1.0).
-- **R10:** Preview focus restoration is confirmed. Sorting from the `WhatsApp` card to A–Z returned focus to that same album by identity. A later D-pad attempt to reach Refresh routed to Select all, which was activated. The user restored their selection; the picker now shows 1 album / 63 photos. Refresh focus and keyboard Back/D-pad behavior remain unverified.
-- **Current TV state:** the temporary font-scale override has been removed (default 1.0). The user-restored selection is 1 album / 63 photos; continue device checks without changing it.
+- **R10:** Preview focus restoration is confirmed. Sorting from an album card to A–Z returned focus to that same album by identity. The earlier attempt to reach Refresh routed to Select all, which was activated; the user later restored their preferred selection. Subsequent checks confirmed Refresh focus restoration as recorded in the Step 6 entry above. The user has since changed the selection again; checks must leave it untouched.
+- **Current TV state:** the temporary font-scale override has been removed (default 1.0). The user's current selection is intentionally managed by the user; continue device checks without changing it.
 - **Build:** `:app:assembleDebug :app:lintDebug` and `:app:testDebugUnitTest` passed after these changes (240 JVM tests).
 
 ### Album picker cover and scroll regression (2026-10-19)
