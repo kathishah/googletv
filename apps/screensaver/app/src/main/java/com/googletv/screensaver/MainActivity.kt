@@ -79,8 +79,7 @@ class MainActivity : Activity() {
     private var pickerRefreshRetry: Button? = null
     private val requestedCoverIds = mutableSetOf<String>()
     private val albumCoverCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
-    private var albumCoverFocusIndex: Int? = null
-    private var albumCoverPositions: Map<String, Int> = emptyMap()
+    private val albumCoverImageViews = mutableMapOf<String, ImageView>()
     private var pickerHorizontalScroll: HorizontalScrollView? = null
     private var pickerScrollPosition = 0
     private var pickerFocusedIndex: Int? = null
@@ -696,8 +695,6 @@ class MainActivity : Activity() {
         albumCoverSource?.close()
         albumCoverSource = null
         requestedCoverIds.clear()
-        albumCoverFocusIndex = null
-        albumCoverPositions = emptyMap()
         selectionMode = PhotoSelectionMode.ALBUMS
         preferences.setPhotoSelectionMode(PhotoSelectionMode.ALBUMS)
         saveSmbDraftFromFields()
@@ -977,20 +974,6 @@ class MainActivity : Activity() {
             if (sortName) visibleAlbums.sortedWith(compareBy<AlbumEntry> { it.title.lowercase() })
             else visibleAlbums.sortedWith(compareByDescending<AlbumEntry> { it.yearMonth ?: "" }.thenBy { it.title.lowercase() })
         }
-        fun trimDistantCovers(focusedCard: View) {
-            val focusedIndex = carousel.indexOfChild(focusedCard)
-            if (focusedIndex < 0) return
-            albumCoverFocusIndex = focusedIndex
-            pickerFocusedIndex = focusedIndex
-            albumCoverPositions = cards.mapValues { carousel.indexOfChild(it.value) }
-            cards.forEach { (albumId, card) ->
-                val index = carousel.indexOfChild(card)
-                if (index < 0 || index == focusedIndex) return@forEach
-                coverViews[albumId]?.setImageDrawable(null)
-                val album = visibleAlbums.firstOrNull { it.id == albumId } ?: return@forEach
-                albumCoverCache.remove(albumCoverCacheKey(album))?.recycle()
-            }
-        }
         fun photoCount(): Int = albums.asSequence()
             .filter { it.id in staged }
             .flatMap { it.paths.asSequence() }
@@ -1118,7 +1101,6 @@ class MainActivity : Activity() {
                 focusedView.foreground = if (focused) focusOutline() else null
                 if (focused) {
                     pickerFocusedAlbumId = album.id
-                    trimDistantCovers(focusedView)
                     loadAlbumCover(album, cover)
                 }
             }
@@ -1210,6 +1192,7 @@ class MainActivity : Activity() {
         val usePoster = AlbumCoverRules.usesVideoPoster(mediaType, album.photoCount, album.videoCount)
         val posterCandidates = if (usePoster) AlbumCoverRules.posterCandidates(album.videos) else emptyList()
         val cacheKey = albumCoverCacheKey(album)
+        albumCoverImageViews[cacheKey] = cover
         albumCoverCache[cacheKey]?.let { cover.setImageBitmap(it); return }
         if (!usePoster && album.paths.isEmpty()) return
         if (!requestedCoverIds.add(cacheKey)) return
@@ -1249,16 +1232,17 @@ class MainActivity : Activity() {
                     "${android.os.SystemClock.elapsedRealtime() - coverStartedAt} ms",
             )
             if (loadedBitmap != null) runOnUiThread {
-                val stillNearFocus = albumCoverFocusIndex?.let { focusedIndex ->
-                    val albumIndex = albumCoverPositions[album.id] ?: -1
-                    albumIndex >= 0 && albumIndex == focusedIndex
-                } ?: true
-                if (pickerOpen && pickerToken == catalogLoadToken && !isFinishing && stillNearFocus) {
+                if (pickerOpen && pickerToken == catalogLoadToken && !isFinishing) {
                     albumCoverCache[cacheKey] = loadedBitmap
-                    while (albumCoverCache.size > 8) {
-                        albumCoverCache.remove(albumCoverCache.entries.iterator().next().key)?.recycle()
-                    }
+                    albumCoverImageViews[cacheKey] = cover
                     cover.setImageBitmap(loadedBitmap)
+                    while (albumCoverCache.size > 8) {
+                        val oldestKey = albumCoverCache.entries.iterator().next().key
+                        val oldestBitmap = albumCoverCache.remove(oldestKey)
+                        albumCoverImageViews.remove(oldestKey)?.setImageDrawable(null)
+                        requestedCoverIds.remove(oldestKey)
+                        oldestBitmap?.recycle()
+                    }
                 } else loadedBitmap.recycle()
             }
         }
@@ -1336,8 +1320,7 @@ class MainActivity : Activity() {
         albumCoverSource?.close()
         albumCoverSource = null
         requestedCoverIds.clear()
-        albumCoverFocusIndex = null
-        albumCoverPositions = emptyMap()
+        albumCoverImageViews.clear()
     }
 
     private fun enterPreview() {
