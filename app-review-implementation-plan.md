@@ -51,7 +51,7 @@ Each needs the user's separate approval. Both are read-only, counts-only queries
 | Video success boundary | Resolved 2026-10-19 | User decided a clip resets the streak only after it finishes or reaches the 60 s cap. |
 | Catalog rebuild in the screensaver | Resolved 2026-10-19 | User chose app refresh. DreamService uses the last app-refreshed catalog and asks for an app refresh if it is missing or incompatible; it does not check the Mac for newer Photos changes at dream start. |
 | Trashed photos in albums | R15 (deferred) | Should recently deleted photos appear in album slideshows? Needs the Mac database check first |
-| Saved Date-only labels | Docs and UI | What happens to saved `DATE_ONLY` values (Save currently changes them silently to Location + date): keep, migrate explicitly, or bring the option back |
+| Saved Date-only labels | Resolved 2026-10-19 | User chose to remove `DATE_ONLY` support. The enum and UI option were removed; legacy stored values use the normal default fallback. |
 
 ## Step 1: quick wins
 
