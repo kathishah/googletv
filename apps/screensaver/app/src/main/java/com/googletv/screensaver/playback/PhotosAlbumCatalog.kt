@@ -40,10 +40,19 @@ internal object PhotosAlbumCatalog {
     private const val MIN_DOCUMENT_CONFIDENCE = 0.4
     private const val MIN_RECEIPT_CONFIDENCE = 0.19
 
-    fun read(file: File, expectedSourceId: String? = null): AlbumIndex? = runCatching {
-        if (!file.isFile) return null
-        parse(file.readText(Charsets.UTF_8))
-    }.getOrNull()?.takeIf { expectedSourceId == null || it.sourceId == expectedSourceId }
+    fun read(file: File, expectedSourceId: String? = null): AlbumIndex? {
+        val parsed = try {
+            if (!file.isFile) return null
+            parse(file.readText(Charsets.UTF_8))
+        } catch (error: Exception) {
+            if (error is InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw error
+            }
+            null
+        }
+        return parsed?.takeIf { expectedSourceId == null || it.sourceId == expectedSourceId }
+    }
 
     /** Parses and validates catalog JSON; throws if anything is wrong. */
     internal fun parse(json: String): AlbumIndex {

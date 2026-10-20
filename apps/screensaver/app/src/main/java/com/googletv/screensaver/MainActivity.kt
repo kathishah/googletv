@@ -71,11 +71,15 @@ class MainActivity : Activity() {
     private var catalogLoadToken = 0
     private var videoCatalogGateToken = 0
     private var albumCoverSource: SmbGuestPhotoSource? = null
+    @Volatile private var activeCatalogSource: SmbGuestPhotoSource? = null
+    private val catalogSourceLock = Any()
     private var pickerRootView: View? = null
     private var pickerRefreshError: TextView? = null
     private var pickerRefreshRetry: Button? = null
     private val requestedCoverIds = mutableSetOf<String>()
     private val albumCoverCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
+    private var albumCoverFocusIndex: Int? = null
+    private var albumCoverPositions: Map<String, Int> = emptyMap()
     private fun albumCoverCacheDirectory(): File =
         File(filesDir, "album-cover-thumbnails/${SmbSourceIdentity.forConfig(draftSmbConfig)}")
 
@@ -108,10 +112,14 @@ class MainActivity : Activity() {
         player = null
         albumCoverSource?.close()
         albumCoverSource = null
+        synchronized(catalogSourceLock) {
+            pickerOpen = false
+            catalogLoadToken++
+            videoCatalogGateToken++
+            activeCatalogSource?.close()
+            activeCatalogSource = null
+        }
         albumExecutor.shutdownNow()
-        pickerOpen = false
-        catalogLoadToken++
-        videoCatalogGateToken++
         albumCoverCache.clear()
         super.onDestroy()
     }
@@ -458,11 +466,23 @@ class MainActivity : Activity() {
         root.addView(progressText)
         setContentView(root)
         albumExecutor.execute {
+            if (isFinishing || token != videoCatalogGateToken) return@execute
             val result = runCatching {
                 val source = SmbGuestPhotoSource(
                     config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
                     catalogCacheDirectory = filesDir,
                 )
+                val registered = synchronized(catalogSourceLock) {
+                    if (isFinishing || token != videoCatalogGateToken) false
+                    else {
+                        activeCatalogSource = source
+                        true
+                    }
+                }
+                if (!registered) {
+                    source.close()
+                    return@execute
+                }
                 try {
                     source.loadAlbumIndex(catalogFile, refresh = true) { update -> runOnUiThread {
                         if (!isFinishing && token == videoCatalogGateToken) {
@@ -480,6 +500,9 @@ class MainActivity : Activity() {
                         }
                     } }
                 } finally {
+                    synchronized(catalogSourceLock) {
+                        if (activeCatalogSource === source) activeCatalogSource = null
+                    }
                     source.close()
                 }
             }
@@ -543,6 +566,13 @@ class MainActivity : Activity() {
     }
 
     private fun openAlbumPicker(refresh: Boolean = false) {
+        val token = synchronized(catalogSourceLock) {
+            pickerOpen = true
+            (++catalogLoadToken).also {
+                activeCatalogSource?.close()
+                activeCatalogSource = null
+            }
+        }
         val previousPickerRoot = if (refresh) pickerRootView else null
         if (!refresh) {
             pickerRootView = null
@@ -552,10 +582,10 @@ class MainActivity : Activity() {
         albumCoverSource?.close()
         albumCoverSource = null
         requestedCoverIds.clear()
-        pickerOpen = true
+        albumCoverFocusIndex = null
+        albumCoverPositions = emptyMap()
         selectionMode = PhotoSelectionMode.ALBUMS
         preferences.setPhotoSelectionMode(PhotoSelectionMode.ALBUMS)
-        val token = ++catalogLoadToken
         saveSmbDraftFromFields()
         val configDraft = draftSmbConfig.copy(
             host = smbFields[0].text.toString().trim(), share = smbFields[1].text.toString().trim(),
@@ -603,11 +633,23 @@ class MainActivity : Activity() {
         loading.addView(progressText)
         setContentView(loading)
         albumExecutor.execute {
+            if (isFinishing || !pickerOpen || token != catalogLoadToken) return@execute
             val result = runCatching {
                 val source = SmbGuestPhotoSource(
                     config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
                     catalogCacheDirectory = filesDir,
                 )
+                val registered = synchronized(catalogSourceLock) {
+                    if (isFinishing || !pickerOpen || token != catalogLoadToken) false
+                    else {
+                        activeCatalogSource = source
+                        true
+                    }
+                }
+                if (!registered) {
+                    source.close()
+                    return@execute
+                }
                 try {
                     source.loadAlbumIndex(
                         catalogFile,
@@ -629,6 +671,9 @@ class MainActivity : Activity() {
                         }
                     } }
                 } finally {
+                    synchronized(catalogSourceLock) {
+                        if (activeCatalogSource === source) activeCatalogSource = null
+                    }
                     source.close()
                 }
             }
@@ -817,6 +862,19 @@ class MainActivity : Activity() {
             if (sortName) visibleAlbums.sortedWith(compareBy<AlbumEntry> { it.title.lowercase() })
             else visibleAlbums.sortedWith(compareByDescending<AlbumEntry> { it.yearMonth ?: "" }.thenBy { it.title.lowercase() })
         }
+        fun trimDistantCovers(focusedCard: View) {
+            val focusedIndex = carousel.indexOfChild(focusedCard)
+            if (focusedIndex < 0) return
+            albumCoverFocusIndex = focusedIndex
+            albumCoverPositions = cards.mapValues { carousel.indexOfChild(it.value) }
+            cards.forEach { (albumId, card) ->
+                val index = carousel.indexOfChild(card)
+                if (index < 0 || index == focusedIndex) return@forEach
+                coverViews[albumId]?.setImageDrawable(null)
+                val album = visibleAlbums.firstOrNull { it.id == albumId } ?: return@forEach
+                albumCoverCache.remove(albumCoverCacheKey(album))?.recycle()
+            }
+        }
         fun photoCount(): Int = albums.asSequence()
             .filter { it.id in staged }
             .flatMap { it.paths.asSequence() }
@@ -942,7 +1000,10 @@ class MainActivity : Activity() {
             checks[album.id] = check
             card.setOnFocusChangeListener { focusedView, focused ->
                 focusedView.foreground = if (focused) focusOutline() else null
-                if (focused) loadAlbumCover(album, cover)
+                if (focused) {
+                    trimDistantCovers(focusedView)
+                    loadAlbumCover(album, cover)
+                }
             }
             card.setOnClickListener {
                 if (!staged.add(album.id)) staged.remove(album.id)
@@ -1028,17 +1089,21 @@ class MainActivity : Activity() {
         val config = draftSmbConfig
         val pickerToken = catalogLoadToken
         albumExecutor.execute {
+            if (!pickerOpen || pickerToken != catalogLoadToken || albumCoverSource !== source) return@execute
             val coverStartedAt = android.os.SystemClock.elapsedRealtime()
             val cacheFile = File(albumCoverCacheDirectory(), "$cacheKey.jpg")
             var bitmap = if (cacheFile.isFile) BitmapFactory.decodeFile(cacheFile.absolutePath) else null
             val coverFromCache = bitmap != null
             if (bitmap == null) {
                 cacheFile.delete()
+                if (!pickerOpen || pickerToken != catalogLoadToken || albumCoverSource !== source) return@execute
                 bitmap = if (usePoster) {
                     posterCandidates.firstNotNullOfOrNull { video ->
+                        if (!pickerOpen || pickerToken != catalogLoadToken || albumCoverSource !== source) return@firstNotNullOfOrNull null
                         com.googletv.screensaver.playback.VideoPoster.load(config, video, File(cacheDir, "video-cache"), 480, 300)
                     }
                 } else album.paths.take(4).firstNotNullOfOrNull { relativePath ->
+                    if (!pickerOpen || pickerToken != catalogLoadToken || albumCoverSource !== source) return@firstNotNullOfOrNull null
                     runCatching {
                         source.loadImage(com.googletv.screensaver.playback.Slide(
                             "${config.rootPath}\\${relativePath.replace('/', '\\')}", album.title,
@@ -1056,10 +1121,14 @@ class MainActivity : Activity() {
                     "${android.os.SystemClock.elapsedRealtime() - coverStartedAt} ms",
             )
             if (loadedBitmap != null) runOnUiThread {
-                if (pickerOpen && pickerToken == catalogLoadToken && !isFinishing) {
+                val stillNearFocus = albumCoverFocusIndex?.let { focusedIndex ->
+                    val albumIndex = albumCoverPositions[album.id] ?: -1
+                    albumIndex >= 0 && albumIndex == focusedIndex
+                } ?: true
+                if (pickerOpen && pickerToken == catalogLoadToken && !isFinishing && stillNearFocus) {
                     albumCoverCache[cacheKey] = loadedBitmap
-                    while (albumCoverCache.size > 32) {
-                        albumCoverCache.remove(albumCoverCache.entries.iterator().next().key)
+                    while (albumCoverCache.size > 8) {
+                        albumCoverCache.remove(albumCoverCache.entries.iterator().next().key)?.recycle()
                     }
                     cover.setImageBitmap(loadedBitmap)
                 } else loadedBitmap.recycle()
@@ -1125,14 +1194,20 @@ class MainActivity : Activity() {
     }
 
     private fun closeAlbumPicker() {
-        pickerOpen = false
-        catalogLoadToken++
+        synchronized(catalogSourceLock) {
+            pickerOpen = false
+            catalogLoadToken++
+            activeCatalogSource?.close()
+            activeCatalogSource = null
+        }
         pickerRootView = null
         pickerRefreshError = null
         pickerRefreshRetry = null
         albumCoverSource?.close()
         albumCoverSource = null
         requestedCoverIds.clear()
+        albumCoverFocusIndex = null
+        albumCoverPositions = emptyMap()
     }
 
     private fun enterPreview() {

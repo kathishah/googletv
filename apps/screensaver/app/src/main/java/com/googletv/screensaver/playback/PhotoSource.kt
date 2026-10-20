@@ -98,13 +98,24 @@ class BundledSamplePhotoSource(
 
 internal data class PhotoMetadata(val label: String?, val orientation: Int)
 
+/** Converts expected metadata failures into a fallback while preserving executor cancellation. */
+private inline fun <T> captureExpectedFailure(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (error: Exception) {
+    if (error is InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw error
+    }
+    Result.failure(error)
+}
+
 internal fun readExifMetadata(
     open: () -> InputStream,
     includeLocation: Boolean,
     includeDate: Boolean,
     placeNameLookup: ((Double, Double) -> String?)? = null,
 ): PhotoMetadata {
-    return runCatching {
+    return captureExpectedFailure {
         val exif = open().use { stream ->
             BufferedInputStream(stream).use {
                 ExifInterface(it, ExifInterface.STREAM_TYPE_FULL_IMAGE_DATA)
@@ -115,7 +126,7 @@ internal fun readExifMetadata(
             ExifInterface.ORIENTATION_NORMAL,
         )
         val location = if (includeLocation) {
-            runCatching {
+            captureExpectedFailure {
                 val coordinates = FloatArray(2)
                 if (exif.getLatLong(coordinates)) {
                     placeNameLookup?.invoke(coordinates[0].toDouble(), coordinates[1].toDouble())
@@ -149,16 +160,17 @@ internal fun decodeSampledBitmap(
     exifOrientation: Int = ExifInterface.ORIENTATION_NORMAL,
     useNativeHeif: Boolean = false,
 ): Bitmap {
+    val imageTempDirectory = fallbackCacheDirectory?.let { ImageDecodeTemps.prepare(it) }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     open().use { BitmapFactory.decodeStream(it, null, bounds) }
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
         return decodeAfterPlatformFailure(
-            open, targetWidth, targetHeight, fallbackCacheDirectory, useNativeHeif,
+            open, targetWidth, targetHeight, imageTempDirectory, useNativeHeif,
         )
     }
 
     if (useNativeHeif && bounds.outWidth.toLong() * bounds.outHeight >= LARGE_HEIF_PIXEL_THRESHOLD) {
-        return decodeWithNativeHeif(open, targetWidth, targetHeight, fallbackCacheDirectory)
+        return decodeWithNativeHeif(open, targetWidth, targetHeight, imageTempDirectory)
     }
 
     var sampleSize = 1
@@ -170,7 +182,7 @@ internal fun decodeSampledBitmap(
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
     val decoded = open().use { input -> BitmapFactory.decodeStream(input, null, options) }
         ?: return decodeAfterPlatformFailure(
-            open, targetWidth, targetHeight, fallbackCacheDirectory, useNativeHeif,
+            open, targetWidth, targetHeight, imageTempDirectory, useNativeHeif,
         )
     // BitmapFactory leaves EXIF orientation unapplied. ImageDecoder's platform path already
     // applies it, so only transform the BitmapFactory result here.
@@ -209,12 +221,12 @@ private fun decodeWithNativeHeif(
     cacheDirectory: File?,
 ): Bitmap {
     requireNotNull(cacheDirectory) { "Native HEIF decoding requires a private cache directory." }
-    val tempFile = File.createTempFile("heif-decode-", ".heic", cacheDirectory)
+    val tempFile = ImageDecodeTemps.create(cacheDirectory, "heif-decode-", ".heic")
     try {
         open().use { input -> tempFile.outputStream().use(input::copyTo) }
         return NativeHeifDecoder.decode(tempFile, targetWidth, targetHeight)
     } finally {
-        tempFile.delete()
+        ImageDecodeTemps.release(tempFile)
     }
 }
 
@@ -272,7 +284,7 @@ private fun decodeWithImageDecoder(
     cacheDirectory: File?,
 ): Bitmap {
     requireNotNull(cacheDirectory) { "Unsupported or unreadable image" }
-    val tempFile = File.createTempFile("smb-image-", ".tmp", cacheDirectory)
+    val tempFile = ImageDecodeTemps.create(cacheDirectory, "smb-image-", ".tmp")
     try {
         open().use { input -> tempFile.outputStream().use(input::copyTo) }
         val source = ImageDecoder.createSource(tempFile)
@@ -287,8 +299,50 @@ private fun decodeWithImageDecoder(
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
     } finally {
-        tempFile.delete()
+        ImageDecodeTemps.release(tempFile)
     }
 }
 
 private const val LARGE_HEIF_PIXEL_THRESHOLD = 24_000_000L
+
+/** Keeps full-resolution decoder inputs separate from ordinary app cache and bounds crash leftovers. */
+private object ImageDecodeTemps {
+    private const val DIRECTORY = "image-decode-temp"
+    private const val MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
+    private const val MAX_BYTES = 256L * 1024 * 1024
+    private val lock = Any()
+    private val active = mutableSetOf<String>()
+
+    fun prepare(cacheDirectory: File): File = synchronized(lock) {
+        // Remove leftovers from older builds, which placed these full originals directly in cache/.
+        cacheDirectory.listFiles { file -> file.isFile &&
+            (file.name.startsWith("smb-image-") || file.name.startsWith("heif-decode-"))
+        }?.forEach(File::delete)
+        val directory = File(cacheDirectory, DIRECTORY)
+        directory.mkdirs()
+        val files = directory.listFiles { file -> file.isFile &&
+            (file.name.startsWith("smb-image-") || file.name.startsWith("heif-decode-"))
+        }?.toList().orEmpty()
+        val now = System.currentTimeMillis()
+        files.filter { it.absolutePath !in active && now - it.lastModified() > MAX_AGE_MILLIS }.forEach(File::delete)
+        val remaining = directory.listFiles { file -> file.isFile }?.sortedBy { it.lastModified() }.orEmpty()
+        var total = remaining.sumOf { it.length() }
+        for (file in remaining) {
+            if (total <= MAX_BYTES) break
+            if (file.absolutePath in active) continue
+            total -= file.length()
+            file.delete()
+        }
+        directory
+    }
+
+    fun create(directory: File, prefix: String, suffix: String): File = synchronized(lock) {
+        File.createTempFile(prefix, suffix, directory).also { active += it.absolutePath }
+    }
+
+    fun release(file: File) = synchronized(lock) {
+        active -= file.absolutePath
+        file.delete()
+        Unit
+    }
+}

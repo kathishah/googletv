@@ -11,6 +11,16 @@ import java.util.concurrent.Future
 private fun newPlayerExecutor(threadName: String): ExecutorService =
     Executors.newSingleThreadExecutor { runnable -> Thread(runnable, threadName).apply { isDaemon = true } }
 
+private inline fun <T> captureWorkerFailure(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (error: Exception) {
+    if (error is InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw error
+    }
+    Result.failure(error)
+}
+
 /**
  * Turns on Portrait pairs: [showPair] draws two photos and their background, and [screenWidth] by
  * [screenHeight] is the size the pair is laid out for (the display, as for decoding). Without it the player
@@ -109,7 +119,10 @@ class SlideshowPlayer internal constructor(
 
     private fun requestListing(runGeneration: Int, attempt: Int) {
         pending = worker.submit {
-            val result = runCatching { photoSource.loadSlides() }
+            val result = captureWorkerFailure {
+                ensureCurrent(runGeneration)
+                photoSource.loadSlides()
+            }
             callbacks.post {
                 if (!isCurrent(runGeneration)) return@post
                 result.fold(
@@ -229,7 +242,7 @@ class SlideshowPlayer internal constructor(
         }
         loadingImage = true
         pending = worker.submit {
-            val result = runCatching { loadContent(slide) }
+            val result = captureWorkerFailure { loadContent(slide, runGeneration) }
             callbacks.post {
                 if (!isCurrent(runGeneration)) {
                     result.getOrNull()?.recycle()
@@ -309,7 +322,7 @@ class SlideshowPlayer internal constructor(
         if (slide.kind == SlideKind.VIDEO) return // videos are prepared when their turn comes
         preloadingSlide = slide
         pending = worker.submit {
-            val result = runCatching { loadContent(slide) }
+            val result = runCatching { loadContent(slide, runGeneration) }
             callbacks.post {
                 if (!isCurrent(runGeneration)) {
                     result.getOrNull()?.recycle()
@@ -348,14 +361,24 @@ class SlideshowPlayer internal constructor(
      * they are laid out in. The worker decodes one photo at a time, so a pair takes two decodes; the
      * previous slide stays up until the whole pair is ready.
      */
-    private fun loadContent(slide: Slide): LoadedContent {
+    private fun loadContent(slide: Slide, runGeneration: Int): LoadedContent {
+        ensureCurrent(runGeneration)
         val partnerSlide = slide.partner
         val config = pairing
-        if (partnerSlide == null || config == null) return LoadedContent(photoSource.loadImage(slide))
+        if (partnerSlide == null || config == null) {
+            ensureCurrent(runGeneration)
+            return LoadedContent(photoSource.loadImage(slide))
+        }
         val startedAt = clockMillis()
-        val first = runCatching { photoSource.loadImage(slide) }
+        ensureCurrent(runGeneration)
+        val first = captureWorkerFailure { photoSource.loadImage(slide) }
         val firstDoneAt = clockMillis()
-        val second = runCatching { photoSource.loadImage(partnerSlide) }
+        if (!isCurrent(runGeneration)) {
+            first.getOrNull()?.bitmap?.recycle()
+            throw InterruptedException("Slideshow stopped before pair decode completed.")
+        }
+        ensureCurrent(runGeneration)
+        val second = captureWorkerFailure { photoSource.loadImage(partnerSlide) }
         val decodedAt = clockMillis()
         return when (val outcome = PairFailureRules.classify(first.exceptionOrNull(), second.exceptionOrNull())) {
             is PairFailureRules.Outcome.NoneLoaded -> throw outcome.error
@@ -400,7 +423,10 @@ class SlideshowPlayer internal constructor(
         val runGeneration = generation
         loadingImage = true
         pending = worker.submit {
-            val result = runCatching { photoSource.prepareVideo(slide) }
+            val result = captureWorkerFailure {
+                ensureCurrent(runGeneration)
+                photoSource.prepareVideo(slide)
+            }
             callbacks.post {
                 if (!isCurrent(runGeneration)) {
                     result.getOrNull()?.closeAsync()
@@ -623,9 +649,11 @@ class SlideshowPlayer internal constructor(
         val source = fallbackSource ?: return
         if (!fallbackActive || !isCurrent(runGeneration)) return
         fallbackWorker.submit {
-            val result = runCatching {
+            val result = captureWorkerFailure {
+                ensureCurrent(runGeneration)
                 val all = fallbackSlides ?: source.loadSlides().also { fallbackSlides = it }
                 val slide = all[fallbackCursor++ % all.size]
+                ensureCurrent(runGeneration)
                 slide to source.loadImage(slide)
             }
             callbacks.post {
@@ -683,6 +711,10 @@ class SlideshowPlayer internal constructor(
     }
 
     private fun isCurrent(runGeneration: Int): Boolean = active && generation == runGeneration
+
+    private fun ensureCurrent(runGeneration: Int) {
+        if (!isCurrent(runGeneration)) throw InterruptedException("Slideshow operation is no longer current.")
+    }
 
     private fun Throwable.hasGuestSigningFailure(): Boolean =
         generateSequence(this) { it.cause }.any { it is SMB2GuestSigningRequiredException }

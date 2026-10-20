@@ -152,7 +152,12 @@ internal class ProgressiveReader(
             throw InsufficientStorageException("Not enough free space to buffer this video.")
         }
         val raf = RandomAccessFile(cacheFile, "rw")
-        raf.setLength(sizeBytes)
+        try {
+            raf.setLength(sizeBytes)
+        } catch (error: Throwable) {
+            try { raf.close() } finally { cacheFile.delete() }
+            throw error
+        }
         file = raf
         channel = raf.channel
         val reader = Thread(::readLoop, "video-reader").apply { isDaemon = true }

@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,11 @@
 #endif
 
 namespace {
+
+struct ContextDeleter { void operator()(heif_context* value) const { if (value) heif_context_free(value); } };
+struct HandleDeleter { void operator()(heif_image_handle* value) const { if (value) heif_image_handle_release(value); } };
+struct OptionsDeleter { void operator()(heif_decoding_options* value) const { if (value) heif_decoding_options_free(value); } };
+struct ImageDeleter { void operator()(heif_image* value) const { if (value) heif_image_release(value); } };
 
 struct ProbeResult {
     int width = 0;
@@ -46,34 +52,31 @@ int64_t effective_offset(uint32_t offset, uint32_t tile, uint32_t count, uint32_
 
 bool decode_tiles(const char* path, int target_width, int target_height, ProbeResult* result) {
     const auto started = std::chrono::steady_clock::now();
-    heif_context* context = heif_context_alloc();
-    if (context == nullptr) {
+    std::unique_ptr<heif_context, ContextDeleter> context(heif_context_alloc());
+    if (!context) {
         result->info = "libheif context allocation failed";
         return false;
     }
 
-    heif_image_handle* handle = nullptr;
-    heif_error error = heif_context_read_from_file(context, path, nullptr);
+    heif_image_handle* raw_handle = nullptr;
+    heif_error error = heif_context_read_from_file(context.get(), path, nullptr);
     if (error.code != heif_error_Ok) {
         result->info = "open: " + error_message(error);
-        heif_context_free(context);
         return false;
     }
 
-    error = heif_context_get_primary_image_handle(context, &handle);
-    if (error.code != heif_error_Ok || handle == nullptr) {
+    error = heif_context_get_primary_image_handle(context.get(), &raw_handle);
+    std::unique_ptr<heif_image_handle, HandleDeleter> handle(raw_handle);
+    if (error.code != heif_error_Ok || !handle) {
         result->info = "primary image: " + error_message(error);
-        heif_context_free(context);
         return false;
     }
 
     heif_image_tiling tiling{};
     tiling.version = 1;
-    error = heif_image_handle_get_image_tiling(handle, 1, &tiling);
+    error = heif_image_handle_get_image_tiling(handle.get(), 1, &tiling);
     if (error.code != heif_error_Ok) {
         result->info = "tile metadata: " + error_message(error);
-        heif_image_handle_release(handle);
-        heif_context_free(context);
         return false;
     }
     if (tiling.image_width == 0 || tiling.image_height == 0 ||
@@ -81,8 +84,6 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
         tiling.image_width > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
         tiling.image_height > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
         result->info = "invalid grid dimensions";
-        heif_image_handle_release(handle);
-        heif_context_free(context);
         return false;
     }
 
@@ -97,8 +98,6 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
     const size_t pixel_count = static_cast<size_t>(result->width) * result->height;
     if (pixel_count > 16 * 1024 * 1024) {
         result->info = "target image exceeds prototype allocation limit";
-        heif_image_handle_release(handle);
-        heif_context_free(context);
         return false;
     }
     result->pixels.assign(static_cast<size_t>(target_width) * target_height, 0xff000000u);
@@ -112,11 +111,9 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
     const int64_t top_offset = effective_offset(
         tiling.top_offset, tiling.tile_height, tiling.num_rows, tiling.image_height);
 
-    heif_decoding_options* options = heif_decoding_options_alloc();
-    if (options == nullptr) {
+    std::unique_ptr<heif_decoding_options, OptionsDeleter> options(heif_decoding_options_alloc());
+    if (!options) {
         result->info = "decode options allocation failed";
-        heif_image_handle_release(handle);
-        heif_context_free(context);
         return false;
     }
     options->ignore_transformations = 0;
@@ -125,11 +122,12 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
     bool success = true;
     for (uint32_t tile_y = 0; tile_y < tiling.num_rows && success; ++tile_y) {
         for (uint32_t tile_x = 0; tile_x < tiling.num_columns; ++tile_x) {
-            heif_image* tile = nullptr;
+            heif_image* raw_tile = nullptr;
             error = heif_image_handle_decode_image_tile(
-                handle, &tile, heif_colorspace_RGB, heif_chroma_interleaved_RGBA,
-                options, tile_x, tile_y);
-            if (error.code != heif_error_Ok || tile == nullptr) {
+                handle.get(), &raw_tile, heif_colorspace_RGB, heif_chroma_interleaved_RGBA,
+                options.get(), tile_x, tile_y);
+            std::unique_ptr<heif_image, ImageDeleter> tile(raw_tile);
+            if (error.code != heif_error_Ok || !tile) {
                 result->info = "tile decode: " + error_message(error);
                 success = false;
                 break;
@@ -137,13 +135,12 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
 
             int stride = 0;
             const uint8_t* pixels = heif_image_get_plane_readonly(
-                tile, heif_channel_interleaved, &stride);
-            const int tile_width = heif_image_get_width(tile, heif_channel_interleaved);
-            const int tile_height = heif_image_get_height(tile, heif_channel_interleaved);
+                tile.get(), heif_channel_interleaved, &stride);
+            const int tile_width = heif_image_get_width(tile.get(), heif_channel_interleaved);
+            const int tile_height = heif_image_get_height(tile.get(), heif_channel_interleaved);
             if (pixels == nullptr || stride < tile_width * 4 ||
                 tile_width <= 0 || tile_height <= 0) {
                 result->info = "invalid decoded tile buffer";
-                heif_image_release(tile);
                 success = false;
                 break;
             }
@@ -171,12 +168,10 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
                         static_cast<uint32_t>(rgba[2]);
                 }
             }
-            heif_image_release(tile);
             ++decoded_tiles;
         }
     }
 
-    heif_decoding_options_free(options);
     if (success) {
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
@@ -197,8 +192,6 @@ bool decode_tiles(const char* path, int target_width, int target_height, ProbeRe
             " elapsedMs=" + std::to_string(elapsed);
     }
 
-    heif_image_handle_release(handle);
-    heif_context_free(context);
     return success;
 }
 
