@@ -1,6 +1,6 @@
 # Media-type selection: photos, videos, or both
 
-Status: **draft spec, 2026-10-17. Not implemented.** Roadmap item 9. Mock: [media-type.html](mockups/media-type.html).
+Status: **implemented and exercised on the TCL TV (2026-10-19).** All seven implementation milestones are complete; see the [plan](#implementation-plan) and [device findings](DEVICE_TESTING.md#device-findings). The DreamService video fallback, video playback, poster covers, failure recovery and soak results are recorded below.
 
 ## Goal
 
@@ -44,11 +44,11 @@ The settings table changes in two rows:
 - **Type Videos lists only albums that have videos** (373 of 759 on this library); the subtitle says "Showing only albums with videos". Albums hidden by the filter keep any selection they had, so it is still there for the other Types: a note says how many selected albums are hidden, **Select all** selects only the albums shown, and **Clear all** clears everything. The bottom total counts the shown selected albums. If no album has videos the picker says so.
 - With Type Photos + Videos an album with nothing eligible stays selectable, is dimmed, and reads "No pictures or videos"; with Type Photos the card is unchanged ("0 pictures"). Selected albums with nothing eligible add a warning under the controls, consistent with the existing rule that an empty album is explained, not hidden, outside the Videos filter.
 - The bottom rail total reads "N albums · X items" (or "X pictures" with Type *Photos*, unchanged). Selection saves immediately and survives Type changes.
-- Covers: unchanged for photo albums. With Type *Videos*, or for an album that has only videos while videos are in scope, the cover is a poster frame (**implemented in milestone 6**). `VideoPoster` opens the clip over its own connection, fetches only the end of the file and the first three 4 MiB blocks through the progressive reader, takes the frame at one second with `MediaMetadataRetriever` (closest sync frame), scales it to fit 480 by 300, and closes the reader, which stops the rest of the download. It tries up to four clips, lightest first among the album's first eight. The poster is cached in the same persistent thumbnail cache under its own key (`AlbumCoverRules.posterCacheKey`), so switching Type keeps both kinds of cover; the photo cover key is unchanged, so covers cached before videos existed still hit.
+- Covers: unchanged for photo albums. With Type *Videos*, or for an album that has only videos while videos are in scope, the cover is a poster frame. `VideoPoster` opens the clip over its own connection, requests the end and first media blocks through the progressive reader, and waits for its minimum head/tail readiness gate before taking the frame near one second with `MediaMetadataRetriever`. The reader continues fetching until closed; closing it stops the rest of the download. The poster is scaled to 480 by 300, and up to four clips are tried, lightest first among the album's first eight. Posters are cached in the persistent thumbnail cache under their own key; photo cover cache keys are unchanged.
 
 ### Screensaver
 
-- The DreamService does not play videos, does not read the video list, and never starts a `MediaPlayer`.
+- The DreamService does not play or prepare video files and never starts a `MediaPlayer`. The shared catalog JSON parser still reads video metadata.
 - **Type = Photos:** unchanged. The screensaver honors Media (*All* or *Choose Albums*), the saved albums, Pool, Interval, and Label.
 - **Type = Photos + Videos or Videos:** the screensaver ignores Media, the saved albums, Type, and Pool, and shows a random pool of **500 photos** drawn from the whole library (the same sampling as *All*). Interval and Label still apply. The saved albums and Type stay saved for the in-app slideshow.
 - **Catalog:** the screensaver uses the catalog last refreshed from the app. If that catalog is missing or its format is no longer supported, the screensaver asks you to refresh the album catalog in the app instead of building it during idle startup. It does not check the Mac for newer Photos changes at dream start; refresh in the app to pick those up.

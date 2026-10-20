@@ -38,7 +38,6 @@ class VideoLabelTest {
     @Test
     fun theLabelModeIsHonored() {
         assertNull(label("20220612T180212.000Z", "+37.7749-122.4194/", PhotoLabelMode.NONE))
-        assertEquals("Jun 12, 2022", label("20220612T180212.000Z", "+37.7749-122.4194/", PhotoLabelMode.DATE_ONLY))
     }
 
     @Test
@@ -66,6 +65,6 @@ class VideoLabelTest {
     @Test
     fun theDayFollowsTheDeviceTimeZone() {
         val sydney = TimeZone.getTimeZone("Australia/Sydney")
-        assertEquals("Jun 13, 2022", VideoLabel.format("20220612T180212.000Z", null, PhotoLabelMode.DATE_ONLY, null, Locale.US, sydney))
+        assertEquals("Jun 13, 2022", VideoLabel.format("20220612T180212.000Z", null, PhotoLabelMode.LOCATION_AND_DATE, null, Locale.US, sydney))
     }
 }

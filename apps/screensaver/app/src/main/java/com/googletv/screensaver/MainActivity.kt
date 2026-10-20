@@ -14,6 +14,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ScrollView
 import android.widget.ImageView
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -80,6 +81,13 @@ class MainActivity : Activity() {
     private val albumCoverCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
     private var albumCoverFocusIndex: Int? = null
     private var albumCoverPositions: Map<String, Int> = emptyMap()
+    private var pickerHorizontalScroll: HorizontalScrollView? = null
+    private var pickerScrollPosition = 0
+    private var pickerFocusedIndex: Int? = null
+    private var pickerFocusedAlbumId: String? = null
+    private var pendingPickerRestore: Pair<Int, Int>? = null
+    private var pendingPickerAlbumRestore: String? = null
+    private var previewReturnFocusTag: String? = null
     private fun albumCoverCacheDirectory(): File =
         File(filesDir, "album-cover-thumbnails/${SmbSourceIdentity.forConfig(draftSmbConfig)}")
 
@@ -87,12 +95,101 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         preferences = SlideshowPreferences(this)
         restoreDraftFromPreferences()
+        if (savedInstanceState != null) restoreDraftFromSavedState(savedInstanceState)
         settingsScreen = buildScreen()
         smbSettingsScreen = buildSmbSettingsScreen()
-        setContentView(settingsScreen)
         refreshSettingsControls()
-        val initialFocus = choiceButtons["source"]?.getOrNull(if (sourceMode == PhotoSourceMode.SMB_GUEST) 1 else 0)
-        initialFocus?.post { initialFocus.requestFocus() }
+        when (savedInstanceState?.getString(STATE_SCREEN)) {
+            SCREEN_SMB -> {
+                smbSettingsOpen = true
+                setContentView(smbSettingsScreen)
+                if (savedInstanceState?.getString(STATE_FOCUS_TAG) == "smb:back") {
+                    smbSettingsScreen.findViewWithTag<View>("smb:back")?.post { smbSettingsScreen.findViewWithTag<View>("smb:back")?.requestFocus() }
+                } else restoreSmbFieldFocus(savedInstanceState?.getInt(STATE_SMB_FOCUS, 0) ?: 0)
+            }
+            SCREEN_PICKER -> {
+                val index = savedInstanceState?.getInt(STATE_PICKER_INDEX, 0) ?: 0
+                val scroll = savedInstanceState?.getInt(STATE_PICKER_SCROLL, 0) ?: 0
+                pendingPickerRestore = index to scroll
+                setContentView(settingsScreen)
+                openAlbumPicker()
+            }
+            SCREEN_PREVIEW -> {
+                setContentView(settingsScreen)
+                enterPreview()
+            }
+            else -> {
+                setContentView(settingsScreen)
+                restoreChoiceFocus(savedInstanceState?.getString(STATE_FOCUS_TAG))
+            }
+        }
+        if (savedInstanceState == null) {
+            val initialFocus = choiceButtons["source"]?.getOrNull(if (sourceMode == PhotoSourceMode.SMB_GUEST) 1 else 0)
+            initialFocus?.post { initialFocus.requestFocus() }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        saveSmbDraftFromFields()
+        outState.putString(STATE_SCREEN, when {
+            player != null -> SCREEN_PREVIEW
+            smbSettingsOpen -> SCREEN_SMB
+            pickerOpen -> SCREEN_PICKER
+            else -> SCREEN_SETTINGS
+        })
+        outState.putString(STATE_SOURCE, sourceMode.name)
+        outState.putString(STATE_SELECTION_MODE, selectionMode.name)
+        outState.putString(STATE_MEDIA_TYPE, mediaType.name)
+        outState.putInt(STATE_INTERVAL, intervalPreset.seconds)
+        outState.putInt(STATE_POOL, poolSize.count)
+        outState.putString(STATE_LAYOUT, layoutMode.name)
+        outState.putString(STATE_LABEL, labelMode.name)
+        outState.putString(STATE_SMB_HOST, draftSmbConfig.host)
+        outState.putString(STATE_SMB_SHARE, draftSmbConfig.share)
+        outState.putString(STATE_SMB_PATH, draftSmbConfig.rootPath)
+        outState.putString(STATE_FOCUS_TAG, if (player != null) previewReturnFocusTag else currentFocus?.tag as? String)
+        outState.putInt(STATE_SMB_FOCUS, smbFields.indexOf(currentFocus).coerceAtLeast(0))
+        outState.putInt(STATE_PICKER_INDEX, pickerFocusedIndex ?: 0)
+        outState.putInt(STATE_PICKER_SCROLL, pickerHorizontalScroll?.scrollX ?: pickerScrollPosition)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun restoreDraftFromSavedState(state: Bundle) {
+        sourceMode = enumOrDefault(state.getString(STATE_SOURCE), sourceMode)
+        selectionMode = enumOrDefault(state.getString(STATE_SELECTION_MODE), selectionMode)
+        mediaType = enumOrDefault(state.getString(STATE_MEDIA_TYPE), mediaType)
+        intervalPreset = IntervalPreset.all.firstOrNull { it.seconds == state.getInt(STATE_INTERVAL, intervalPreset.seconds) }
+            ?: intervalPreset
+        poolSize = PhotoPoolSize.all.firstOrNull { it.count == state.getInt(STATE_POOL, poolSize.count) } ?: poolSize
+        layoutMode = enumOrDefault(state.getString(STATE_LAYOUT), layoutMode)
+        labelMode = enumOrDefault(state.getString(STATE_LABEL), labelMode)
+        draftSmbConfig = draftSmbConfig.copy(
+            host = state.getString(STATE_SMB_HOST, draftSmbConfig.host),
+            share = state.getString(STATE_SMB_SHARE, draftSmbConfig.share),
+            rootPath = state.getString(STATE_SMB_PATH, draftSmbConfig.rootPath),
+        )
+        val sourceId = runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()
+        if (sourceId != selectedAlbumSourceId) {
+            selectedAlbumIds = emptySet()
+            selectedAlbumPhotoCount = 0
+            selectedAlbumVideoCount = 0
+            selectedAlbumSourceId = sourceId
+        }
+    }
+
+    private inline fun <reified T : Enum<T>> enumOrDefault(value: String?, fallback: T): T =
+        value?.let { runCatching { enumValueOf<T>(it) }.getOrNull() } ?: fallback
+
+    private fun restoreChoiceFocus(tag: String?) {
+        val button = choiceButtons.values.flatten().firstOrNull { it.tag == tag }
+        val target = button ?: choiceButtons["source"]?.getOrNull(if (sourceMode == PhotoSourceMode.SMB_GUEST) 1 else 0)
+        val focusTarget = tag?.let { settingsScreen.findViewWithTag<View>(it) } ?: target
+        focusTarget?.post { focusTarget.requestFocus() }
+    }
+
+    private fun restoreSmbFieldFocus(index: Int) {
+        val fields = smbFields
+        fields.getOrNull(index.coerceIn(fields.indices))?.post { fields[index.coerceIn(fields.indices)].requestFocus() }
     }
 
     override fun onResume() {
@@ -144,6 +241,10 @@ class MainActivity : Activity() {
     }
 
     private fun buildScreen(): View {
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(48), dp(14), dp(48), dp(18))
@@ -165,7 +266,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
         root.addView(settingsTable, LinearLayout.LayoutParams(-1, -2))
-        root.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(View(this), LinearLayout.LayoutParams(-1, dp(12)))
         albumError = text("", 14f, false).apply {
             setTextColor(Color.rgb(255, 190, 130))
             visibility = View.GONE
@@ -188,14 +289,16 @@ class MainActivity : Activity() {
         }
         root.addView(settingsStatus)
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
-        actions.addView(button("Preview") { saveDraftAndPreview() }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
+        actions.addView(button("Preview") { saveDraftAndPreview() }.apply { tag = "action:preview" }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
         actions.addView(button("Save") { saveDraftWithCatalogCheck() }.apply {
+            tag = "action:save"
             setBackgroundTintList(ColorStateList.valueOf(SELECTED_COLOR))
         }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
-        actions.addView(button("Cancel") { cancelDraft() }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
+        actions.addView(button("Cancel") { cancelDraft() }.apply { tag = "action:cancel" }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
         root.addView(actions)
         renderSettingsTable()
-        return root
+        scroll.addView(root, android.view.ViewGroup.LayoutParams(-1, -2))
+        return scroll
     }
 
     private fun buildSmbSettingsScreen(): View {
@@ -231,7 +334,7 @@ class MainActivity : Activity() {
             smbSettingsOpen = false
             setContentView(settingsScreen)
             focusChoice("source", if (sourceMode == PhotoSourceMode.SMB_GUEST) 1 else 0)
-        }, LinearLayout.LayoutParams(dp(180), dp(58)))
+        }.apply { tag = "smb:back" }, LinearLayout.LayoutParams(dp(180), dp(58)))
         return root
     }
 
@@ -307,22 +410,25 @@ class MainActivity : Activity() {
             this.background = background
         }
         val label = text(title, 16f, true).apply { isAccessibilityHeading = true }
-        row.addView(label, LinearLayout.LayoutParams(dp(165), dp(38)))
+        row.addView(label, LinearLayout.LayoutParams(dp(165), -2).apply {
+            marginEnd = dp(6)
+        })
         val optionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val buttons = choices.mapIndexed { index, (caption, action) ->
             button(caption, action).apply {
+                tag = "$key:$index"
                 contentDescription = "$title, $caption"
                 textSize = 13f
-                minHeight = dp(36)
-                setPadding(dp(5), 0, dp(5), 0)
-                layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply {
+                minHeight = dp(48)
+                setPadding(dp(5), dp(4), dp(5), dp(4))
+                layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply {
                     if (index < choices.lastIndex) marginEnd = dp(7)
                 }
             }.also(optionRow::addView)
         }
         choiceButtons[key] = buttons
         row.addView(optionRow, LinearLayout.LayoutParams(0, -2, 1f))
-        settingsTable.addView(row, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(3) })
+        settingsTable.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
         return row to optionRow
     }
 
@@ -366,9 +472,7 @@ class MainActivity : Activity() {
         intervalPreset = IntervalPreset.all.firstOrNull { it.seconds == preferences.intervalSeconds() } ?: IntervalPreset.default
         poolSize = preferences.photoPoolSize()
         layoutMode = preferences.layoutMode()
-        labelMode = preferences.photoLabelMode().let {
-            if (it == PhotoLabelMode.DATE_ONLY) PhotoLabelMode.LOCATION_AND_DATE else it
-        }
+        labelMode = preferences.photoLabelMode()
         draftSmbConfig = preferences.smbSourceConfig()
         val sourceId = runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()
         val selection = sourceId?.let(preferences::albumSelectionFor)
@@ -575,6 +679,7 @@ class MainActivity : Activity() {
     }
 
     private fun openAlbumPicker(refresh: Boolean = false) {
+        if (refresh) pendingPickerAlbumRestore = pickerFocusedAlbumId
         val token = synchronized(catalogSourceLock) {
             pickerOpen = true
             (++catalogLoadToken).also {
@@ -862,6 +967,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(5), 0, dp(8))
             addView(carousel, android.view.ViewGroup.LayoutParams(-2, -1))
         }
+        pickerHorizontalScroll = horizontalScroll
         root.addView(horizontalScroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
         val cards = linkedMapOf<String, FrameLayout>()
@@ -875,6 +981,7 @@ class MainActivity : Activity() {
             val focusedIndex = carousel.indexOfChild(focusedCard)
             if (focusedIndex < 0) return
             albumCoverFocusIndex = focusedIndex
+            pickerFocusedIndex = focusedIndex
             albumCoverPositions = cards.mapValues { carousel.indexOfChild(it.value) }
             cards.forEach { (albumId, card) ->
                 val index = carousel.indexOfChild(card)
@@ -1010,6 +1117,7 @@ class MainActivity : Activity() {
             card.setOnFocusChangeListener { focusedView, focused ->
                 focusedView.foreground = if (focused) focusOutline() else null
                 if (focused) {
+                    pickerFocusedAlbumId = album.id
                     trimDistantCovers(focusedView)
                     loadAlbumCover(album, cover)
                 }
@@ -1024,6 +1132,7 @@ class MainActivity : Activity() {
             carousel.removeAllViews()
             orderedAlbums().forEachIndexed { index, album ->
                 val card = cards[album.id] ?: makeCard(album)
+                card.tag = index
                 carousel.addView(card, LinearLayout.LayoutParams(dp(190), dp(220)).apply {
                     if (index > 0) marginStart = dp(16)
                 })
@@ -1071,7 +1180,7 @@ class MainActivity : Activity() {
             persistStagedSelection()
         }
         sortButton.setOnClickListener {
-            val focusedAlbum = cards.entries.firstOrNull { it.value.hasFocus() }?.key
+            val focusedAlbum = cards.entries.firstOrNull { it.value.hasFocus() }?.key ?: pickerFocusedAlbumId
             sortName = !sortName
             sortButton.text = if (sortName) "Sort: A–Z ▾" else "Sort: Newest ▾"
             reorderCards(focusedAlbum)
@@ -1083,7 +1192,17 @@ class MainActivity : Activity() {
         pickerRootView = root
         root.post {
             orderedAlbums().take(5).forEach { album -> coverViews[album.id]?.let { loadAlbumCover(album, it) } }
-            cards.values.firstOrNull()?.requestFocus()
+            val restore = pendingPickerRestore
+            if (restore != null) {
+                val (index, scrollX) = restore
+                horizontalScroll.scrollTo(scrollX.coerceAtLeast(0), 0)
+                orderedAlbums().getOrNull(index)?.let { cards[it.id]?.requestFocus() }
+                pendingPickerRestore = null
+            } else {
+                val restoreAlbum = pendingPickerAlbumRestore?.let(cards::get)
+                if (restoreAlbum != null) restoreAlbum.requestFocus() else cards.values.firstOrNull()?.requestFocus()
+                pendingPickerAlbumRestore = null
+            }
         }
     }
 
@@ -1196,6 +1315,8 @@ class MainActivity : Activity() {
         pickerRootView = null
         pickerRefreshError = null
         pickerRefreshRetry = null
+        pickerScrollPosition = pickerHorizontalScroll?.scrollX ?: pickerScrollPosition
+        pickerHorizontalScroll = null
         albumError.visibility = View.GONE
         setContentView(settingsScreen)
         refreshSettingsControls()
@@ -1220,6 +1341,7 @@ class MainActivity : Activity() {
     }
 
     private fun enterPreview() {
+        previewReturnFocusTag = currentFocus?.tag as? String ?: previewReturnFocusTag
         try {
             PhotoSourceFactory.create(this, preferences)
         } catch (error: IllegalArgumentException) {
@@ -1253,6 +1375,8 @@ class MainActivity : Activity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(settingsScreen)
         refreshSettingsControls()
+        restoreChoiceFocus(previewReturnFocusTag)
+        previewReturnFocusTag = null
     }
 
     private fun compactOptionLayout() = LinearLayout.LayoutParams(
@@ -1311,6 +1435,25 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val STATE_SCREEN = "state.screen"
+        private const val STATE_SOURCE = "state.source"
+        private const val STATE_SELECTION_MODE = "state.selectionMode"
+        private const val STATE_MEDIA_TYPE = "state.mediaType"
+        private const val STATE_INTERVAL = "state.interval"
+        private const val STATE_POOL = "state.pool"
+        private const val STATE_LAYOUT = "state.layout"
+        private const val STATE_LABEL = "state.label"
+        private const val STATE_SMB_HOST = "state.smbHost"
+        private const val STATE_SMB_SHARE = "state.smbShare"
+        private const val STATE_SMB_PATH = "state.smbPath"
+        private const val STATE_FOCUS_TAG = "state.focusTag"
+        private const val STATE_SMB_FOCUS = "state.smbFocus"
+        private const val STATE_PICKER_INDEX = "state.pickerIndex"
+        private const val STATE_PICKER_SCROLL = "state.pickerScroll"
+        private const val SCREEN_SETTINGS = "settings"
+        private const val SCREEN_SMB = "smb"
+        private const val SCREEN_PICKER = "picker"
+        private const val SCREEN_PREVIEW = "preview"
         private const val LAYOUT_NOTE = "Two portrait photos side by side. Landscape photos stay full screen."
         private val SELECTED_COLOR = Color.rgb(48, 104, 155)
         private val BUTTON_COLOR = Color.rgb(42, 52, 64)

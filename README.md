@@ -16,13 +16,13 @@ Personal Android TV / Google TV apps, starting with a photo screensaver for a TC
 
 ## Current state
 
-Planning is in place and the TV's OS is known (Android TV 12). The development Mac still needs the Android toolchain, and `adb` has not yet been connected to the TV. The Android app and Gradle project have **not** been generated yet. The first implementation is a testable local slideshow, followed by read-only image access through the Mac mini's existing SMB `Photos` share.
+The Android app is implemented in `apps/screensaver/` and runs on the TCL A300 (Android TV 12). It includes a remote-friendly settings screen, local preview, `DreamService`, read-only SMB Guest source, regular-album catalog and picker, media type selection, video playback, and single/portrait-pair layouts. Device findings and remaining checks are in [`docs/DEVICE_TESTING.md`](docs/DEVICE_TESTING.md); the current work order is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 The default Google TV Ambient mode already supports Google Photos album selection and slideshow speed on supported devices. Our app is intended to add control over the slideshow and display available images from the Mac mini's Photos library using SMB. Direct SMB access does not reveal Photos album membership; album selection needs a separate export or index. Google also offers a purpose-built Photos Ambient API for third-party TV slideshows, but access requires acceptance into its partner program. See [photo source constraints](docs/PHOTO_SOURCES.md) before implementing cloud sign-in.
 
 ## First implementation target
 
-Build a TV launcher app and a `DreamService` that display local sample photos, allow a user to pick an interval with the remote, and can be sideloaded on the TCL TV. Google TV on Android TV 12 is reported to have no settings menu for third-party screensavers, so the dream is selected with `adb` and needs the TCL Auto Launch permission. This TV also has TCL's own idle Art Mode, which may take precedence; verify that the dream starts on idle. The launcher slideshow remains useful even if the firmware does not allow replacing Ambient mode.
+The app DreamService is selected with `adb` and has started on idle at the default timeout. Testing found no separate TCL Auto Launch control and none was needed for observed activation; recheck after firmware updates. The launcher preview remains available alongside system screensaver integration.
 
 ## Local prerequisites
 

@@ -20,7 +20,6 @@ enum class PhotoPoolSize(val count: Int, val label: String) {
 
 enum class PhotoLabelMode(val label: String) {
     LOCATION_AND_DATE("Location + date"),
-    DATE_ONLY("Date only"),
     NONE("No label");
 
     companion object {

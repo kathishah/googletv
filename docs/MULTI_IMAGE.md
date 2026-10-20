@@ -1,6 +1,6 @@
 # Multi-image layout: portrait pairs
 
-Status: **in progress, started 2026-10-18.** Milestones 1 to 5 (catalog v5, planner and fit, renderer, player integration, settings and screensaver) are done, so Portrait pairs is built end to end; see the [plan](#implementation-plan). Roadmap item 10, first part. Mock: [portrait-pairs.html](mockups/portrait-pairs.html) (today's single portrait, the plain pair, and four three-slice styles: pinstripes, diamond lattice, walnut frame, brass fillet mat).
+Status: **implemented and accepted on the TCL TV (2026-10-18).** All five milestones (catalog, planner and fit, renderer, player integration, settings and screensaver) are complete; see the [plan](#implementation-plan) and [device findings](DEVICE_TESTING.md#portrait-pairs-milestone-5-settings-and-screensaver-2026-10-18). Mock: [portrait-pairs.html](mockups/portrait-pairs.html) (single portrait, plain pair, and four three-slice styles: pinstripes, diamond lattice, walnut frame, brass fillet mat).
 
 ## Goal
 
@@ -133,7 +133,7 @@ Instead of black, the free space is divided into **three equal slices: left, mid
 - `SlideshowView` gets a second photo layer beside the first and a pure function (`PairFit`, JVM-tested like `VideoFitRules`) that returns the two rectangles and the three slice widths from the two bitmap sizes and the screen size (the 16 px minimum slice replaces the gutter).
 - **Decode size.** Photos are decoded to fit the whole screen as now (a 12 MP landscape file is decoded at 1008 × 756, rotated for portrait); a pair member is shown at the same height it would have alone, so **no change to decode sizes** is needed and a pair costs one more bitmap of about 3 MB.
 - **Decode time is the risk.** The worker decodes one photo at a time, so a pair takes two decodes. 12 MP photos (most portraits) decode fast; a 24 MP HEIC takes 5.5 to 7 s each through the native tile decoder ([device testing](DEVICE_TESTING.md#device-findings)), so a pair of two of them can take up to about 14 s against a 10 s Interval. **Measured (milestone 4):** 14.7 to 21.9 s for pairs of two 24 MP HEICs (each decode 7 to 13 s including the SMB transfer, slower than the 5.5 to 7 s of the earlier single-photo tests), at most 2.2 times a 10 s Interval, in a worst-case pool made only of such photos; in the real albums the longest pair took 17.9 s. The preload starts for the next slide's two photos as soon as the current slide appears, and the existing "stay until ready" rule keeps the screen from going blank. Measure real pairs from the library on the TV; if the stretch is a problem, the options are decoding the second photo at a smaller target or a minimum pair Interval.
-- Memory: no new native allocation (one decode at a time); the Java heap holds up to four photo bitmaps (current pair and the preloaded pair) instead of two, plus up to two 8 MB background bitmaps. **Measured:** a 31-minute soak stayed between 91 and 141 MB PSS with no upward trend (see device testing).
+- Memory: one decode at a time; the current and preloaded pair can hold four photo bitmaps, plus up to two 8 MB background bitmaps. Android 8+ stores bitmap pixels in native memory, so managed Java heap alone does not describe bitmap or process memory. PSS includes more than the app's managed heap and must not be compared directly with the 192 MB managed-heap limit. **Measured:** a 31-minute soak stayed between 91 and 141 MB process PSS with no upward trend; a later picker sweep raised PSS from about 88 MB to 203 MB, and the user accepted the focused-card-only cover behavior without requiring more measurement. See [device testing](DEVICE_TESTING.md#resource-cleanup-follow-up-2026-10-19).
 
 ## Implementation plan
 
@@ -174,11 +174,9 @@ Recommended defaults are used above.
 8. **Three-slice pattern background instead of black** (the mock). If yes: **always on** with Portrait pairs, or a third Layout choice ("Portrait pairs, black") for the plain version? Recommended: always on.
 9. **Styles.** Pinstripes and diamond lattice are kept (user choice). The walnut frame and brass fillet mat are new and need a look; fixed tones or tinted by the photos? Any other frame idea (for example a pale gallery mat, a thin black frame with a white mat)?
 
-## Open questions
+## Follow-up policy
 
-- Real decode time for pairs of large portrait HEICs (see Rendering).
-- Whether the Layout row fits the settings screen without tightening spacing.
-- Whether pair frequency should be a setting (for example Rarely, Sometimes, Often) rather than a constant.
-- Whether a pair should avoid two photos from the same moment (for example two near-identical shots); not needed for v1, and the catalog has no burst information.
-- Closed: four-up tiles are cancelled, so `PairFit` does not need to generalize to a grid.
-- Closed by the user's review (2026-10-18): pairs look right and appear often enough; pair frequency stays a constant. A wider check of the HEIF offset fix, a network-failure check of pairs, and a smaller second decode for 24 MP pairs were judged not needed.
+- The Layout row and large-text scrolling were checked on the TCL; settings rows now grow with their content.
+- Pair frequency remains a fixed 0.6 and pairs are accepted as reviewed on the TV.
+- Four-up tiles, pairing landscapes or square photos, user-controlled frequency, and avoiding same-moment pairs remain out of scope. The catalog has no burst information.
+- A wider check of the HEIF offset fix, a network-failure check of pairs, and a smaller second decode for 24 MP pairs were waived by the user after review; revisit only if an issue appears.

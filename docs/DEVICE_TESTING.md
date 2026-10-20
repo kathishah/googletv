@@ -20,7 +20,7 @@ What this implies:
 - Use `minSdk 31` so the app can install on this TV. Check current official documentation before choosing `targetSdk` and `compileSdk`.
 - The [official adb guide](https://developer.android.com/tools/adb) describes pairing-code wireless debugging. This TV's Developer options screen did not list Wireless debugging. USB debugging enabled legacy network ADB on port 5555; that port was not reachable before USB debugging was enabled.
 - Community reports (see [Aerial Views setup](https://github.com/theothernt/AerialViews)) say Google TV devices running Android TV 12 or later have no settings menu for choosing a third-party screensaver; one is selected with `adb` instead (step 4).
-- The TCL Auto Launch `appops` name for Android TV 13 or lower is `APP_AUTO_START` (step 5).
+- Community reports mention an `APP_AUTO_START` app-op on some Android TV versions, but this firmware does not expose it; see step 5.
 - The A300 is TCL's NXTFRAME "art TV". Per [TCL support](https://support.tcl.com/en_US/t-exhibition-turning-your-tcl-tv-into-a-work-of-art) and launch coverage, it has its own idle **Art Mode** (the T-Exhibition app) with an art library, AI art, and a personal photo gallery loaded from USB or the TCL Home phone app. This is separate from Google TV's Ambient mode. It is unknown whether Art Mode replaces, precedes, or blocks the Android screensaver set by `screensaver_components`; step 4 must find out.
 
 ## Setup sequence
@@ -71,7 +71,7 @@ ADB reports SDK `31` and generic model `Smart TV`. The original `screensaver_com
 
 ### 4. Learn how screensavers are selected on this TV
 
-Status: **done, including the default 10-minute wait (observed 2026-10-16).** Settings and idle behavior were inspected on 2026-10-12. The Ambient mode page offered Google's Backdrop settings and a Start now action. T-Exhibition Art Mode settings showed Wallpaper Time at 2 minutes and Keep Screen On enabled; neither was changed. With the original Backdrop selected, Google Ambient displayed on idle. On 2026-10-16, manually started T-Exhibition artwork was not interrupted by Backdrop (see [Device findings](#device-findings)). **As of 2026-10-16 the app DreamService is left selected as the TV's screensaver** with the original 600000 ms (10-minute) timeout. Idle activation was verified with a temporary 120000 ms timeout. The full 10-minute wait has not been observed end to end. Requires step 3.
+Status: **done, including the default 10-minute wait (observed 2026-10-16).** Settings and idle behavior were inspected on 2026-10-12. The Ambient mode page offered Google's Backdrop settings and a Start now action. T-Exhibition Art Mode settings showed Wallpaper Time at 2 minutes and Keep Screen On enabled; neither was changed. With the original Backdrop selected, Google Ambient displayed on idle. On 2026-10-16, manually started T-Exhibition artwork was not interrupted by Backdrop (see [Device findings](#device-findings)). The app DreamService is selected with the original 600000 ms timeout. Idle activation was observed at 60000 ms and at the default 600000 ms; the latter completed after a full 10-minute wait. A later TV restart also activated the dream (user-reported). Requires step 3.
 
 Check Settings → System → Ambient mode / Screensaver and record which options are shown. Also find the Art Mode / T-Exhibition settings (look for an idle or Art Mode toggle and its timeout) and record them. Let the TV go idle with no changes and note what appears first: Art Mode, Google's Ambient mode, or nothing.
 
@@ -90,7 +90,7 @@ adb shell settings put system screen_off_timeout 600000
 
 After selecting a dream, let the TV go idle again with Art Mode enabled, then with Art Mode turned off, and record which one runs in each case. If Art Mode always takes over, the third-party screensaver may only work with Art Mode turned off.
 
-### 5. Allow TCL Auto Launch
+### 5. Check TCL Auto Launch
 
 Status: **no Auto Launch control found; none was needed for idle activation on this firmware.** On 2026-10-16, these checks found no TCL Auto Launch mechanism:
 
@@ -103,13 +103,15 @@ Status: **no Auto Launch control found; none was needed for idle activation on t
 
 Without changing anything TCL-specific, the app dream started on normal idle in every recorded idle test: at 60000 ms on 2026-10-12, 2026-10-13, and earlier on 2026-10-16, and twice more on 2026-10-16 at 120000 ms. A hidden vendor mechanism cannot be ruled out, but none was observed blocking the dream. Re-check this after a firmware update. Requires step 4 and an installed screensaver app.
 
-According to the [Aerial Views maintainer](https://github.com/theothernt/AerialViews), some TCL Google TVs do not start a third-party screensaver unless the app has Auto Launch permission. On the TV, open Safety Guard → Permission Shield → Auto Launch Permission, set Auto manager to Closed, and set the app to Opened. If Safety Guard is missing, on Android TV 13 or lower:
+The [Aerial Views maintainer](https://github.com/theothernt/AerialViews) reports that some TCL Google TVs need an Auto Launch permission. On this TV, the menu, package, app-op, settings keys and vendor service were not found, and the app DreamService activated without any TCL-specific changes. The following is reference guidance only for a firmware that actually exposes the setting; it is not a setup step for the currently tested firmware.
+
+If a later firmware exposes Safety Guard → Permission Shield → Auto Launch Permission, the Aerial Views guide says to set Auto manager to Closed and the app to Opened. If Safety Guard is missing, on Android TV 13 or lower, first verify that the operation exists before attempting:
 
 ```sh
 adb shell appops set PACKAGE APP_AUTO_START allow
 ```
 
-The successful test does not establish whether Auto Launch permission was enabled already or whether it is required under other conditions. Record its current state, then test the dream with the setting enabled and disabled if practical.
+No Auto Launch state was changed. Recheck only after a firmware update or if the dream stops starting on idle.
 
 ### 6. Optional: prove the whole path with Aerial Views
 
@@ -121,14 +123,14 @@ Status: **done (user-reported, details not recorded).** Requires steps 2–5. Ta
 adb shell settings put secure screensaver_components com.neilturner.aerialviews/.ui.screensaver.DreamActivity
 ```
 
-Then apply step 5 with package `com.neilturner.aerialviews`. Record whether it can use SMB Guest access, whether HEIC photos display, whether the screensaver starts on idle, and whether it survives a TV restart. Restore the original screensaver afterward. Success proves idle activation, Auto Launch, SMB from the TV, and HEIC decoding on this TV before our own code depends on them. Use a test folder first if you do not want the full library shown during the experiment (see [hidden and deleted photos](PHOTO_SOURCES.md#what-originals-contains)).
+Then use step 5 only if that firmware exposes an Auto Launch setting. Record whether Aerial Views can use SMB Guest access, display HEIC photos, start on idle, and survive a TV restart. Restore the original screensaver afterward. The user reports this optional check is done; details were not recorded. Use a test folder first if you do not want the full library shown during an experiment (see [hidden and deleted photos](PHOTO_SOURCES.md#what-originals-contains)).
 
 ### 7. Build and install our app
 
-Status: **partly done.** D-pad settings, preview, interval persistence, SMB Guest photo changes and labels, and idle DreamService activation passed on the TV. The permission-denied HEIC/JPEG sample was resolved at the storage layer; after the permission change, 12 MP HEICs displayed in preview and DreamService. A random 10-photo sample played 9 of 10; the failure was a 24 MP HEIC. Subsequent TV diagnostics found that all tested platform decode paths fail for 24 MP files during native HEIF frame extraction (see [the decode diagnosis](#device-findings)). EXIF orientation is now applied to `BitmapFactory` results and has been visually verified with two portrait 12 MP HEIC samples on the TV. The bundled-source DreamService activated and advanced during the 2026-10-16 idle check. Two later SMB-backed idle runs that day both activated; one hit the listing error and one played and advanced SMB photos, including a 24 MP HEIC. The app is now the selected screensaver at the default timeout. No-label rendering was checked with bundled photos. Date-only rendering on a metadata-bearing TV sample remains pending. TCL's Auto Launch control was not found; current T-Exhibition settings and idle-test results are recorded below. From `apps/screensaver/`:
+Status: **device integration verified; final Step 6 accessibility/focus checks remain.** D-pad settings, preview, interval persistence, SMB Guest photo changes and labels, portrait layout, 24 MP HEIC decoding, video playback, and idle DreamService activation passed on the TV. Transient SMB errors retry and the stored-artwork fallback was exercised. The app is selected at the default timeout. Current accessibility and resource findings are recorded below. From `apps/screensaver/`:
 
 ```sh
-./gradlew assembleDebug lintDebug
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -580,3 +582,11 @@ Built and installed the debug APK from the working tree after B12 and R05. Befor
 - Settings choice buttons now expose the row and option in their accessible name, expose selected/not-selected node state, and provide a state description. SMB field labels are linked to their edit fields with `labelFor`.
 - **TV node check:** after installing the build, UIAutomator exposed `Interval, 10 secs` as selected and `Interval, 30 secs` as not selected; saved settings still showed 10 albums / 879 photos. TalkBack was installed but disabled, so audible TalkBack navigation remains part of the final Step 6 exit check.
 - **Build:** 240 JVM tests passed; debug APK and lint passed.
+
+### Settings saved state, large text and focus (2026-10-19)
+
+- **B16:** with an unsaved Layout change, changing the TV font scale to 1.2 triggered settings recreation. The draft Layout choice remained selected and the saved preference stayed `PORTRAIT_PAIRS`; Cancel restored the saved choice. Returning the font scale to its default also retained the saved 10 albums / 879 photos selection.
+- **R09:** the updated settings screen uses content-sized rows and buttons inside a vertical scroller. At font scale 1.2, all choice labels remained visible; repeated D-pad Down reached Preview, and scrolling placed Preview, Save and Cancel fully within the screen. Preview/Back returned focus to Preview. Font scale is restored to the default (1.0).
+- **R10:** Preview focus restoration is confirmed. Sorting from the `WhatsApp` card to A–Z returned focus to that same album by identity. A later D-pad attempt to reach Refresh routed to Select all, which was activated. The user restored their selection; the picker now shows 1 album / 63 photos. Refresh focus and keyboard Back/D-pad behavior remain unverified.
+- **Current TV state:** the temporary font-scale override has been removed (default 1.0). The user-restored selection is 1 album / 63 photos; continue device checks without changing it.
+- **Build:** `:app:assembleDebug :app:lintDebug` and `:app:testDebugUnitTest` passed after these changes (240 JVM tests).
