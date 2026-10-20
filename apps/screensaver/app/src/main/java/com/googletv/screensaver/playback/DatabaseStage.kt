@@ -55,7 +55,7 @@ internal data class SyncResult(
  * affected file(s) in full. State is recorded only after a copy is verified; if it is missing or does
  * not match the files on disk, the next sync starts from scratch.
  */
-internal class DatabaseStage(private val directory: File) {
+internal class DatabaseStage(private val directory: File, private val sourceId: String? = null) {
     private val databaseFile = File(directory, DatabaseFile.DATABASE.localName)
     private val walFile = File(directory, DatabaseFile.WAL.localName)
     private val stateFile = File(directory, STATE_FILE)
@@ -93,7 +93,10 @@ internal class DatabaseStage(private val directory: File) {
         if (wal != null && walHeader == null) throw walUnreadable()
 
         val prior = loadState()
-        val reuseDatabase = prior != null && prior.databaseSize == database.size &&
+        // A legacy v3 stage has no source marker. Adopt it once for the only configured library;
+        // every subsequent sync is bound to this source ID. A different marked source is never reused.
+        val sameSource = prior?.sourceId == null || sourceId == null || prior.sourceId == sourceId
+        val reuseDatabase = prior != null && sameSource && prior.databaseSize == database.size &&
             prior.databaseModified == database.modifiedMillis && databaseFile.length() == database.size
         val resumeFrom = if (
             reuseDatabase && wal != null && walHeader != null &&
@@ -161,6 +164,7 @@ internal class DatabaseStage(private val directory: File) {
                 committed,
                 wal?.modifiedMillis ?: 0L,
                 snapshotIdentity,
+                sourceId,
             ))
             return SyncResult(
                 databaseFile = databaseFile,
@@ -301,12 +305,14 @@ internal class DatabaseStage(private val directory: File) {
         val walCommitted: Long,
         val walModified: Long,
         val snapshotIdentity: String,
+        val sourceId: String?,
     )
 
     private fun loadState(): SyncState? = runCatching {
         if (!stateFile.isFile) return null
         val properties = Properties().apply { stateFile.inputStream().use(::load) }
-        require(properties.getProperty("version") == STATE_VERSION)
+        val version = properties.getProperty("version")
+        require(version == LEGACY_STATE_VERSION || version == STATE_VERSION)
         SyncState(
             properties.getProperty("databaseSize").toLong(),
             properties.getProperty("databaseModified").toLong(),
@@ -314,6 +320,7 @@ internal class DatabaseStage(private val directory: File) {
             properties.getProperty("walCommitted").toLong(),
             properties.getProperty("walModified").toLong(),
             properties.getProperty("snapshotIdentity").also { require(!it.isNullOrBlank()) },
+            if (version == STATE_VERSION) properties.getProperty("sourceId")?.takeIf { it.isNotBlank() } else null,
         )
     }.getOrNull()
 
@@ -326,6 +333,7 @@ internal class DatabaseStage(private val directory: File) {
             setProperty("walCommitted", state.walCommitted.toString())
             setProperty("walModified", state.walModified.toString())
             setProperty("snapshotIdentity", state.snapshotIdentity)
+            state.sourceId?.let { setProperty("sourceId", it) }
         }
         val temporary = File(directory, "$STATE_FILE.tmp")
         try {
@@ -392,7 +400,8 @@ internal class DatabaseStage(private val directory: File) {
 
     private companion object {
         const val STATE_FILE = "sync-state.properties"
-        const val STATE_VERSION = "3"
+        const val LEGACY_STATE_VERSION = "3"
+        const val STATE_VERSION = "4"
         const val BUFFER_BYTES = 1024 * 1024
         val LOCK = Any()
     }

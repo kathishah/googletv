@@ -28,6 +28,7 @@ class PhotosAlbumCatalogJsonTest {
         videos = listOf(VideoItem("0/c.mov", 31.633, 31_000_000L), VideoItem("9/d.mp4", 4.0, 9_000_000L)),
         excludedPaths = linkedSetOf("0/shot.png", "1/receipt.heic"),
         portraitPaths = linkedSetOf("0/a.jpg", "2/tall.heic"),
+        sourceId = "a".repeat(64),
     )
 
     private fun json(change: (JSONObject) -> Unit): String =
@@ -59,13 +60,21 @@ class PhotosAlbumCatalogJsonTest {
     }
 
     @Test
-    fun version1CatalogsAreRejectedSoTheyGetRebuilt() {
+    fun theSourceIdIsRequiredAndMustBeWellFormed() {
+        assertRejected(json { it.remove("sourceId") })
+        assertRejected(json { it.put("sourceId", "photos.local") })
+    }
+
+    @Test
+    fun olderCatalogVersionsAreRejectedSoTheyGetRebuilt() {
         assertRejected(json { it.put("version", 1) })
         assertRejected(json { it.put("version", 2) }) // version 2 listed shared-album videos that cannot play
         assertRejected(json { it.put("version", 3) }) // version 3 had no exclusion list
         assertRejected(json { it.put("version", 4) }) // version 4 had no portrait list
         assertRejected(json { it.put("version", 5) }) // version 5 excluded only active classified assets
-        assertEquals(7, PhotosAlbumCatalog.VERSION)
+        assertRejected(json { it.put("version", 6) }) // version 6 had no snapshot identity
+        assertRejected(json { it.put("version", 7) }) // version 7 had no SMB source identity
+        assertEquals(8, PhotosAlbumCatalog.VERSION)
     }
 
     @Test
@@ -152,5 +161,14 @@ class PhotosAlbumCatalogJsonTest {
         assertNull(PhotosAlbumCatalog.read(file))
         file.writeText(json { it.put("version", 1) })
         assertNull(PhotosAlbumCatalog.read(file))
+    }
+
+    @Test
+    fun readRejectsCatalogBoundToAnotherSource() {
+        val file = File(temporaryFolder.root, "catalog-source.json")
+        PhotosAlbumCatalog.write(file, sample)
+
+        assertEquals(sample, PhotosAlbumCatalog.read(file, sample.sourceId))
+        assertNull(PhotosAlbumCatalog.read(file, "b".repeat(64)))
     }
 }

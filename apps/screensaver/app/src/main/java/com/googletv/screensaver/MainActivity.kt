@@ -25,6 +25,7 @@ import com.googletv.screensaver.playback.SlideshowPlayer
 import com.googletv.screensaver.playback.AlbumEntry
 import com.googletv.screensaver.playback.AlbumCatalogProgress
 import com.googletv.screensaver.playback.SmbGuestPhotoSource
+import com.googletv.screensaver.playback.SmbSourceIdentity
 import com.googletv.screensaver.playback.validated
 import java.util.concurrent.Executors
 import android.graphics.Bitmap
@@ -58,6 +59,7 @@ class MainActivity : Activity() {
     private var labelMode = PhotoLabelMode.default
     private var layoutMode = LayoutMode.default
     private var selectedAlbumIds = emptySet<String>()
+    private var selectedAlbumSourceId: String? = null
     private var selectedAlbumPhotoCount = 0
     private var selectedAlbumVideoCount = -1
     private var draftSmbConfig = com.googletv.screensaver.playback.SmbSourceConfig(
@@ -74,7 +76,8 @@ class MainActivity : Activity() {
     private var pickerRefreshRetry: Button? = null
     private val requestedCoverIds = mutableSetOf<String>()
     private val albumCoverCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
-    private val albumCoverCacheDirectory by lazy { File(filesDir, "album-cover-thumbnails") }
+    private fun albumCoverCacheDirectory(): File =
+        File(filesDir, "album-cover-thumbnails/${SmbSourceIdentity.forConfig(draftSmbConfig)}")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -350,10 +353,13 @@ class MainActivity : Activity() {
         labelMode = preferences.photoLabelMode().let {
             if (it == PhotoLabelMode.DATE_ONLY) PhotoLabelMode.LOCATION_AND_DATE else it
         }
-        selectedAlbumIds = preferences.selectedAlbumIds()
-        selectedAlbumPhotoCount = preferences.selectedAlbumPhotoCount()
-        selectedAlbumVideoCount = preferences.selectedAlbumVideoCount()
         draftSmbConfig = preferences.smbSourceConfig()
+        val sourceId = runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()
+        val selection = sourceId?.let(preferences::albumSelectionFor)
+        selectedAlbumSourceId = sourceId
+        selectedAlbumIds = selection?.ids.orEmpty()
+        selectedAlbumPhotoCount = selection?.photoCount ?: 0
+        selectedAlbumVideoCount = selection?.videoCount ?: 0
     }
 
     private fun saveSmbDraftFromFields() {
@@ -378,7 +384,15 @@ class MainActivity : Activity() {
             preferences.setLayoutMode(layoutMode)
             preferences.setPhotoLabelMode(labelMode)
             preferences.saveSmbSourceConfig(draftSmbConfig)
-            preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount)
+            runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()?.let { sourceId ->
+                if (selectedAlbumSourceId != sourceId) {
+                    selectedAlbumIds = emptySet()
+                    selectedAlbumPhotoCount = 0
+                    selectedAlbumVideoCount = 0
+                }
+                selectedAlbumSourceId = sourceId
+                preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount, sourceId)
+            }
             // A trace for the log (no private values) so an unexpected change in settings can be dated.
             android.util.Log.i("Settings", "Saved: Type=$mediaType, Layout=$layoutMode, Media=$selectionMode, source=$sourceMode, ${selectedAlbumIds.size} albums")
             settingsStatus.text = "Settings saved."
@@ -420,7 +434,11 @@ class MainActivity : Activity() {
     private fun checkVideoCatalog(preview: Boolean) {
         val token = ++videoCatalogGateToken
         saveSmbDraftFromFields()
-        val config = draftSmbConfig
+        val config = runCatching { draftSmbConfig.validated() }.getOrElse { error ->
+            showVideoCatalogGateError(error.message ?: getString(R.string.smb_config_error), preview)
+            return
+        }
+        val catalogFile = SmbSourceIdentity.catalogFile(filesDir, config)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -446,7 +464,7 @@ class MainActivity : Activity() {
                     catalogCacheDirectory = filesDir,
                 )
                 try {
-                    source.loadAlbumIndex(File(filesDir, "photos-album-catalog-v1.json"), refresh = true) { update -> runOnUiThread {
+                    source.loadAlbumIndex(catalogFile, refresh = true) { update -> runOnUiThread {
                         if (!isFinishing && token == videoCatalogGateToken) {
                             val copied = update.bytesCopied
                             val total = update.totalBytes
@@ -539,11 +557,31 @@ class MainActivity : Activity() {
         preferences.setPhotoSelectionMode(PhotoSelectionMode.ALBUMS)
         val token = ++catalogLoadToken
         saveSmbDraftFromFields()
-        val config = draftSmbConfig.copy(
+        val configDraft = draftSmbConfig.copy(
             host = smbFields[0].text.toString().trim(), share = smbFields[1].text.toString().trim(),
             rootPath = smbFields[2].text.toString().trim(),
         )
+        val config = runCatching { configDraft.validated() }.getOrElse { error ->
+            val message = error.message ?: getString(R.string.smb_config_error)
+            if (previousPickerRoot != null) {
+                setContentView(previousPickerRoot)
+                pickerRefreshError?.text = message
+                pickerRefreshError?.visibility = View.VISIBLE
+                pickerRefreshRetry?.visibility = View.VISIBLE
+                pickerRefreshRetry?.requestFocus()
+            } else {
+                showAlbumPickerError(message)
+            }
+            return
+        }
         draftSmbConfig = config
+        val sourceId = SmbSourceIdentity.forConfig(config)
+        val savedSelection = preferences.albumSelectionFor(sourceId)
+        selectedAlbumIds = savedSelection.ids
+        selectedAlbumPhotoCount = savedSelection.photoCount
+        selectedAlbumVideoCount = savedSelection.videoCount
+        selectedAlbumSourceId = sourceId
+        val catalogFile = SmbSourceIdentity.catalogFile(filesDir, config)
         val loading = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -572,7 +610,7 @@ class MainActivity : Activity() {
                 )
                 try {
                     source.loadAlbumIndex(
-                        java.io.File(filesDir, "photos-album-catalog-v1.json"),
+                        catalogFile,
                         refresh = refresh,
                     ) { update -> runOnUiThread {
                         if (pickerOpen && token == catalogLoadToken) {
@@ -648,6 +686,7 @@ class MainActivity : Activity() {
     }
 
     private fun showAlbumPicker(albums: List<AlbumEntry>, sourceModifiedMillis: Long? = null) {
+        albumCoverCacheDirectory().mkdirs()
         albumCoverSource = SmbGuestPhotoSource(draftSmbConfig, 480, 300, labelMode = labelMode, fallbackCacheDirectory = cacheDir)
         val staged = selectedAlbumIds.toMutableSet()
         var sortName = false
@@ -794,7 +833,12 @@ class MainActivity : Activity() {
             selectedAlbumPhotoCount = photoCount()
             selectedAlbumVideoCount = videoCount()
             selectionMode = PhotoSelectionMode.ALBUMS
-            preferences.setAlbumSelection(selectedAlbumIds, selectedAlbumPhotoCount, selectedAlbumVideoCount)
+            preferences.setAlbumSelection(
+                selectedAlbumIds,
+                selectedAlbumPhotoCount,
+                selectedAlbumVideoCount,
+                selectedAlbumSourceId ?: SmbSourceIdentity.forConfig(draftSmbConfig),
+            )
             preferences.setPhotoSelectionMode(PhotoSelectionMode.ALBUMS)
             cards.forEach { (id, card) ->
                 val selected = id in staged
@@ -985,7 +1029,7 @@ class MainActivity : Activity() {
         val pickerToken = catalogLoadToken
         albumExecutor.execute {
             val coverStartedAt = android.os.SystemClock.elapsedRealtime()
-            val cacheFile = File(albumCoverCacheDirectory, "$cacheKey.jpg")
+            val cacheFile = File(albumCoverCacheDirectory(), "$cacheKey.jpg")
             var bitmap = if (cacheFile.isFile) BitmapFactory.decodeFile(cacheFile.absolutePath) else null
             val coverFromCache = bitmap != null
             if (bitmap == null) {
@@ -1024,7 +1068,7 @@ class MainActivity : Activity() {
     }
 
     private fun albumCoverCacheKey(album: AlbumEntry): String =
-        if (AlbumCoverRules.usesVideoPoster(mediaType, album.photoCount, album.videoCount)) {
+        SmbSourceIdentity.forConfig(draftSmbConfig) + "-" + if (AlbumCoverRules.usesVideoPoster(mediaType, album.photoCount, album.videoCount)) {
             AlbumCoverRules.posterCacheKey(album.id, AlbumCoverRules.posterCandidates(album.videos))
         } else {
             AlbumCoverRules.photoCacheKey(album.id, album.paths)
@@ -1063,9 +1107,12 @@ class MainActivity : Activity() {
     }
 
     private fun finishAlbumPicker() {
-        selectedAlbumIds = preferences.selectedAlbumIds()
-        selectedAlbumPhotoCount = preferences.selectedAlbumPhotoCount()
-        selectedAlbumVideoCount = preferences.selectedAlbumVideoCount()
+        val sourceId = runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()
+        val selection = sourceId?.let(preferences::albumSelectionFor)
+        selectedAlbumSourceId = sourceId
+        selectedAlbumIds = selection?.ids.orEmpty()
+        selectedAlbumPhotoCount = selection?.photoCount ?: 0
+        selectedAlbumVideoCount = selection?.videoCount ?: 0
         selectionMode = preferences.photoSelectionMode()
         closeAlbumPicker()
         pickerRootView = null

@@ -26,7 +26,8 @@ class SmbDreamCatalogPolicyTest {
     fun dreamRequiresRefreshWhenSavedCatalogIsUnreadableOrOutdated() {
         val directory = createTempDirectory()
         try {
-            File(directory, SmbGuestPhotoSource.ALBUM_CATALOG_FILE).writeText("{\"version\":1}")
+            SmbSourceIdentity.catalogFile(directory, SmbSourceConfig("photos.local", "Photos", "Photos Library\\originals"))
+                .writeText("{\"version\":1}")
             val source = source(directory, requireSavedCatalog = true)
             try {
                 expectRefreshRequired(source)

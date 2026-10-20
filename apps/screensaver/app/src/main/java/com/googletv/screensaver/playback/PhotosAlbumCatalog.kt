@@ -23,7 +23,8 @@ internal object PhotosAlbumCatalog {
     // Version 5 adds `portrait`, the photos whose displayed shape allows pairing two on one slide.
     // Version 6 retains exclusions for trashed assets because their originals can remain on disk.
     // Version 7 binds a saved catalog to the exact committed database snapshot it was built from.
-    internal const val VERSION = 7
+    // Version 8 binds the catalog to one private SMB source identity.
+    internal const val VERSION = 8
     private const val PATH_ROOT = "Photos Library.photoslibrary/originals"
 
     /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
@@ -39,10 +40,10 @@ internal object PhotosAlbumCatalog {
     private const val MIN_DOCUMENT_CONFIDENCE = 0.4
     private const val MIN_RECEIPT_CONFIDENCE = 0.19
 
-    fun read(file: File): AlbumIndex? = runCatching {
+    fun read(file: File, expectedSourceId: String? = null): AlbumIndex? = runCatching {
         if (!file.isFile) return null
         parse(file.readText(Charsets.UTF_8))
-    }.getOrNull()
+    }.getOrNull()?.takeIf { expectedSourceId == null || it.sourceId == expectedSourceId }
 
     /** Parses and validates catalog JSON; throws if anything is wrong. */
     internal fun parse(json: String): AlbumIndex {
@@ -88,6 +89,7 @@ internal object PhotosAlbumCatalog {
             videos = libraryVideos,
             excludedPaths = excluded,
             portraitPaths = portrait,
+            sourceId = root.getString("sourceId").also { require(it.matches(Regex("[a-f0-9]{64}"))) },
         )
     }
 
@@ -263,6 +265,7 @@ internal object PhotosAlbumCatalog {
             .put("version", VERSION)
             .put("pathRoot", PATH_ROOT)
             .put("createdAt", index.createdAtMillis)
+            .put("sourceId", requireNotNull(index.sourceId) { "Catalog must be bound to an SMB source." })
         index.sourceModifiedMillis?.let { root.put("sourceModifiedAt", it) }
         index.sourceSnapshotIdentity?.let { root.put("sourceSnapshotIdentity", it) }
         val albums = JSONArray()

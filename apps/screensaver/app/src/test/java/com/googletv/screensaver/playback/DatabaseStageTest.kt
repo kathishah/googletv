@@ -59,6 +59,38 @@ class DatabaseStageTest {
     }
 
     @Test
+    fun stagedDatabaseIsNotReusedForAnotherSourceIdentity() {
+        val wal = WalBuilder.wal(header, WalBuilder.frame(1, 1))
+        val remote = FakeRemote(database(1), 100L, wal, 200L)
+        val first = DatabaseStage(stageDirectory, "a".repeat(64))
+        val other = DatabaseStage(stageDirectory, "b".repeat(64))
+
+        first.sync(remote, PhaseTimings()) { _, _ -> }
+        remote.served.clear()
+        val result = other.sync(remote, PhaseTimings()) { _, _ -> }
+
+        assertFalse(result.reusedDatabase)
+        assertEquals(requireNotNull(remote.database).size.toLong(), result.databaseBytesFetched)
+        assertEquals(0L, result.walResumedFrom)
+        assertEquals(requireNotNull(remote.database).size.toLong(), remote.served[DatabaseFile.DATABASE])
+    }
+
+    @Test
+    fun unboundLegacyStageIsAdoptedForTheConfiguredSourceWithoutRecopying() {
+        val remote = FakeRemote(database(1), 100L, WalBuilder.wal(header, WalBuilder.frame(1, 1)), 200L)
+        DatabaseStage(stageDirectory).sync(remote, PhaseTimings()) { _, _ -> }
+        remote.served.clear()
+
+        val adopted = DatabaseStage(stageDirectory, "a".repeat(64)).sync(remote, PhaseTimings()) { _, _ -> }
+
+        assertTrue(adopted.reusedDatabase)
+        assertTrue(adopted.unchanged)
+        assertEquals(0L, adopted.databaseBytesFetched)
+        assertEquals(0L, adopted.walBytesFetched)
+        assertEquals(null, remote.served[DatabaseFile.DATABASE])
+    }
+
+    @Test
     fun repeatedUncommittedWalTailDoesNotChangeCommittedSnapshotIdentity() {
         val committed = WalBuilder.wal(header, WalBuilder.frame(1, 1))
         val remote = FakeRemote(database(1), 100L, committed, 200L)

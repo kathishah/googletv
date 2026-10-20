@@ -27,6 +27,10 @@ object PhotoSourceFactory {
         } else {
             null
         }
+        val smbConfig = preferences.smbSourceConfig()
+        val selectedAlbumIds = if (randomPhotos || preferences.photoSourceMode() != PhotoSourceMode.SMB_GUEST) emptySet() else {
+            preferences.albumSelectionFor(SmbSourceIdentity.forConfig(smbConfig)).ids
+        }
         return when (preferences.photoSourceMode()) {
             PhotoSourceMode.BUNDLED -> BundledSamplePhotoSource(
                 context.resources,
@@ -36,7 +40,7 @@ object PhotoSourceFactory {
                 placeNameLookup,
             )
             PhotoSourceMode.SMB_GUEST -> SmbGuestPhotoSource(
-                preferences.smbSourceConfig(),
+                smbConfig,
                 metrics.widthPixels,
                 metrics.heightPixels,
                 if (randomPhotos) MediaTypeRules.DREAM_FALLBACK_POOL else preferences.photoPoolSize().count,
@@ -44,7 +48,7 @@ object PhotoSourceFactory {
                 placeNameLookup,
                 context.cacheDir,
                 catalogCacheDirectory = context.filesDir,
-                selectedAlbumIds = if (randomPhotos) emptySet() else preferences.selectedAlbumIds(),
+                selectedAlbumIds = selectedAlbumIds,
                 selectedAlbumMode = !randomPhotos && preferences.photoSelectionMode() == PhotoSelectionMode.ALBUMS,
                 mediaType = if (forDream) MediaType.PHOTOS else preferences.mediaType(),
                 requireSavedCatalog = forDream,

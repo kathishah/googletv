@@ -65,6 +65,8 @@ data class AlbumIndex(
     val excludedPaths: Set<String> = emptySet(),
     /** Active photos whose displayed aspect is between 0.56 and 0.9, so two of them can share a slide. Unlisted photos are shown alone. */
     val portraitPaths: Set<String> = emptySet(),
+    /** SHA-256 source identity; never contains the host, share, or library path. */
+    val sourceId: String? = null,
 )
 data class AlbumCatalogProgress(val message: String, val bytesCopied: Long? = null, val totalBytes: Long? = null)
 class AlbumIndexException(message: String) : IllegalStateException(message)
@@ -88,6 +90,7 @@ class SmbGuestPhotoSource(
     private val requireSavedCatalog: Boolean = false,
 ) : PhotoSource {
     private val validatedConfig = config.validated()
+    private val sourceId = SmbSourceIdentity.forConfig(validatedConfig)
     private val host = validatedConfig.host
     private val shareName = validatedConfig.share
     private val rootPath = validatedConfig.rootPath
@@ -126,8 +129,7 @@ class SmbGuestPhotoSource(
 
     /** The idle DreamService does not run a catalog rebuild; the app owns refresh and its progress UI. */
     private fun readSavedCatalog(): AlbumIndex? {
-        val file = java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE)
-        val index = PhotosAlbumCatalog.read(file)
+        val index = PhotosAlbumCatalog.read(catalogFile, sourceId)
         if (requireSavedCatalog && index == null) {
             throw AlbumIndexException("The Photos catalog needs a refresh. Open the app and refresh the album catalog.")
         }
@@ -242,7 +244,7 @@ class SmbGuestPhotoSource(
         if (!refresh) {
             progress(AlbumCatalogProgress("Reading the saved catalog from this TV"))
             val readStartedAt = SystemClock.elapsedRealtime()
-            PhotosAlbumCatalog.read(cacheFile)?.let { index ->
+            PhotosAlbumCatalog.read(cacheFile, sourceId)?.let { index ->
                 Log.i(
                     LOG_TAG,
                     "Album catalog read from this TV: ${index.albums.size} albums, " +
@@ -257,7 +259,7 @@ class SmbGuestPhotoSource(
             throw AlbumIndexException("Album selection requires the Photos Library originals folder as the SMB library path. Update SMB settings and try again.")
         }
         val libraryPath = segments.dropLast(1).joinToString("\\")
-        val stage = DatabaseStage(databaseStageDirectory)
+        val stage = DatabaseStage(databaseStageDirectory, sourceId)
         val timings = PhaseTimings()
         try {
             return stage.withExclusiveAccess {
@@ -272,7 +274,7 @@ class SmbGuestPhotoSource(
                 } }
                 val sourceModified = maxOf(synced.databaseModifiedMillis, synced.walModifiedMillis ?: 0L)
                 if (synced.unchanged) {
-                    val current = timings.time("catalog_read") { PhotosAlbumCatalog.read(cacheFile) }
+                    val current = timings.time("catalog_read") { PhotosAlbumCatalog.read(cacheFile, sourceId) }
                         ?.takeIf { it.sourceSnapshotIdentity == synced.snapshotIdentity }
                     if (current != null) {
                         val currentSource = current.copy(sourceModifiedMillis = sourceModified)
@@ -292,7 +294,11 @@ class SmbGuestPhotoSource(
                     stage.clear()
                     throw error
                 }
-                val index = built.copy(sourceModifiedMillis = sourceModified, sourceSnapshotIdentity = synced.snapshotIdentity)
+                val index = built.copy(
+                    sourceModifiedMillis = sourceModified,
+                    sourceSnapshotIdentity = synced.snapshotIdentity,
+                    sourceId = sourceId,
+                )
                 progress(AlbumCatalogProgress("Saving the catalog on this TV"))
                 timings.time("catalog_write") { PhotosAlbumCatalog.write(cacheFile, index) }
                 timings.addBytes("catalog_write", cacheFile.length())
@@ -420,9 +426,11 @@ class SmbGuestPhotoSource(
     }
 
     private fun playbackCatalog(): AlbumIndex {
-        val file = java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE)
-        return if (requireSavedCatalog) readSavedCatalog()!! else loadAlbumIndex(file)
+        return if (requireSavedCatalog) readSavedCatalog()!! else loadAlbumIndex(catalogFile)
     }
+
+    private val catalogFile: java.io.File
+        get() = SmbSourceIdentity.catalogFile(catalogCacheDirectory, validatedConfig)
 
     /**
      * Opens a video, waits until the progressive reader says it is safe to start, and reads the label
@@ -684,7 +692,6 @@ class SmbGuestPhotoSource(
 
     companion object {
         const val DEFAULT_POOL_SIZE = 250
-        const val ALBUM_CATALOG_FILE = "photos-album-catalog-v1.json"
         private const val LOG_TAG = "PhotoSource"
         private const val SMB_PORT = 445
         private const val SMB_TIMEOUT_SECONDS = 15L

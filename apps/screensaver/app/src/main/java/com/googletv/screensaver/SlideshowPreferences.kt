@@ -66,7 +66,7 @@ class SlideshowPreferences(context: Context) {
     fun photoSelectionMode(): PhotoSelectionMode =
         preferences.getString(KEY_PHOTO_SELECTION_MODE, null)?.let { value ->
             runCatching { PhotoSelectionMode.valueOf(value) }.getOrNull()
-        } ?: if (selectedAlbumIds().isNotEmpty()) PhotoSelectionMode.ALBUMS else PhotoSelectionMode.ALL
+        } ?: if (rawSelectedAlbumIds().isNotEmpty()) PhotoSelectionMode.ALBUMS else PhotoSelectionMode.ALL
 
     fun setPhotoSelectionMode(mode: PhotoSelectionMode) {
         preferences.edit().putString(KEY_PHOTO_SELECTION_MODE, mode.name).apply()
@@ -115,11 +115,22 @@ class SlideshowPreferences(context: Context) {
             .apply()
     }
 
-    fun selectedAlbumIds(): Set<String> = preferences.getStringSet(KEY_ALBUM_IDS, emptySet()).orEmpty().toSet()
-
-    fun setSelectedAlbumIds(ids: Set<String>) {
-        preferences.edit().putStringSet(KEY_ALBUM_IDS, ids.toSet()).apply()
+    fun albumSelectionFor(sourceId: String): SavedAlbumSelection {
+        val savedSourceId = preferences.getString(KEY_ALBUM_SOURCE_ID, null)
+        val ids = preferences.getStringSet(KEY_ALBUM_IDS, emptySet()).orEmpty().toSet()
+        if (savedSourceId == null) {
+            // Upgrade the single-library selection saved by earlier builds to the current configured source.
+            preferences.edit().putString(KEY_ALBUM_SOURCE_ID, sourceId).apply()
+            return SavedAlbumSelection(ids, selectedAlbumPhotoCount(), selectedAlbumVideoCount())
+        }
+        return if (savedSourceId == sourceId) {
+            SavedAlbumSelection(ids, selectedAlbumPhotoCount(), selectedAlbumVideoCount())
+        } else {
+            SavedAlbumSelection(emptySet(), 0, 0)
+        }
     }
+
+    private fun rawSelectedAlbumIds(): Set<String> = preferences.getStringSet(KEY_ALBUM_IDS, emptySet()).orEmpty().toSet()
 
     fun selectedAlbumPhotoCount(): Int = preferences.getInt(KEY_ALBUM_PHOTO_COUNT, 0)
 
@@ -127,10 +138,11 @@ class SlideshowPreferences(context: Context) {
     fun selectedAlbumVideoCount(): Int = preferences.getInt(KEY_ALBUM_VIDEO_COUNT, -1)
 
     /** Saves the album IDs with their distinct photo and video totals, which do not depend on [MediaType]. */
-    fun setAlbumSelection(ids: Set<String>, photoCount: Int, videoCount: Int) {
+    fun setAlbumSelection(ids: Set<String>, photoCount: Int, videoCount: Int, sourceId: String) {
         preferences.edit().putStringSet(KEY_ALBUM_IDS, ids.toSet())
             .putInt(KEY_ALBUM_PHOTO_COUNT, photoCount.coerceAtLeast(0))
-            .putInt(KEY_ALBUM_VIDEO_COUNT, videoCount.coerceAtLeast(0)).apply()
+            .putInt(KEY_ALBUM_VIDEO_COUNT, videoCount.coerceAtLeast(0))
+            .putString(KEY_ALBUM_SOURCE_ID, sourceId).apply()
     }
 
     companion object {
@@ -147,7 +159,10 @@ class SlideshowPreferences(context: Context) {
         private const val KEY_ALBUM_IDS = "smb_album_ids"
         private const val KEY_ALBUM_PHOTO_COUNT = "smb_album_photo_count"
         private const val KEY_ALBUM_VIDEO_COUNT = "smb_album_video_count"
+        private const val KEY_ALBUM_SOURCE_ID = "smb_album_source_id"
         const val DEFAULT_SMB_SHARE = "Photos"
         const val DEFAULT_SMB_PATH = "Photos Library.photoslibrary/originals"
     }
 }
+
+data class SavedAlbumSelection(val ids: Set<String>, val photoCount: Int, val videoCount: Int)
