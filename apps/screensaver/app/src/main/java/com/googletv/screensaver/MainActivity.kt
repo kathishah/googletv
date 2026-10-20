@@ -69,6 +69,9 @@ class MainActivity : Activity() {
     private var catalogLoadToken = 0
     private var videoCatalogGateToken = 0
     private var albumCoverSource: SmbGuestPhotoSource? = null
+    private var pickerRootView: View? = null
+    private var pickerRefreshError: TextView? = null
+    private var pickerRefreshRetry: Button? = null
     private val requestedCoverIds = mutableSetOf<String>()
     private val albumCoverCache = LinkedHashMap<String, Bitmap>(32, 0.75f, true)
     private val albumCoverCacheDirectory by lazy { File(filesDir, "album-cover-thumbnails") }
@@ -522,6 +525,12 @@ class MainActivity : Activity() {
     }
 
     private fun openAlbumPicker(refresh: Boolean = false) {
+        val previousPickerRoot = if (refresh) pickerRootView else null
+        if (!refresh) {
+            pickerRootView = null
+            pickerRefreshError = null
+            pickerRefreshRetry = null
+        }
         albumCoverSource?.close()
         albumCoverSource = null
         requestedCoverIds.clear()
@@ -589,16 +598,31 @@ class MainActivity : Activity() {
                 if (isFinishing || !pickerOpen || token != catalogLoadToken) return@runOnUiThread
                 result.fold(
                     { index -> showAlbumPicker(index.albums, index.sourceModifiedMillis) },
-                    { err -> showAlbumPickerError(
-                        if (err is com.googletv.screensaver.playback.AlbumIndexException) err.message ?: "Album catalog unavailable"
-                        else "Couldn't build the album catalog. Check the Photos share and try again.",
-                    ) },
+                    { err ->
+                        val message = if (err is com.googletv.screensaver.playback.AlbumIndexException) {
+                            err.message ?: "Album catalog unavailable"
+                        } else {
+                            "Couldn't build the album catalog. Check the Photos share and try again."
+                        }
+                        if (previousPickerRoot != null) {
+                            setContentView(previousPickerRoot)
+                            pickerRefreshError?.text = message
+                            pickerRefreshError?.visibility = View.VISIBLE
+                            pickerRefreshRetry?.visibility = View.VISIBLE
+                            pickerRefreshRetry?.requestFocus()
+                        } else {
+                            showAlbumPickerError(message)
+                        }
+                    },
                 )
             }
         }
     }
 
     private fun showAlbumPickerError(message: String) {
+        pickerRootView = null
+        pickerRefreshError = null
+        pickerRefreshRetry = null
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
@@ -708,6 +732,27 @@ class MainActivity : Activity() {
         noticeRow.addView(removeUnavailable, LinearLayout.LayoutParams(-2, dp(40)))
         removeUnavailable.visibility = View.GONE
         root.addView(noticeRow)
+
+        val refreshFailureRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val refreshFailure = text("", 13f, false).apply {
+            setTextColor(Color.rgb(255, 190, 130))
+            setPadding(0, dp(3), dp(16), dp(3))
+        }
+        val retryRefresh = button("Retry") { openAlbumPicker(refresh = true) }.apply {
+            textSize = 12f
+            minHeight = dp(40)
+            setBackgroundTintList(ColorStateList.valueOf(BUTTON_COLOR))
+        }
+        refreshFailureRow.addView(refreshFailure, LinearLayout.LayoutParams(0, -2, 1f))
+        refreshFailureRow.addView(retryRefresh, LinearLayout.LayoutParams(-2, dp(40)))
+        root.addView(refreshFailureRow)
+        pickerRefreshError = refreshFailure
+        pickerRefreshRetry = retryRefresh
 
         val carousel = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -921,6 +966,7 @@ class MainActivity : Activity() {
         reorderCards()
         updateSelectionUi()
         setContentView(root)
+        pickerRootView = root
         root.post {
             orderedAlbums().take(5).forEach { album -> coverViews[album.id]?.let { loadAlbumCover(album, it) } }
             cards.values.firstOrNull()?.requestFocus()
@@ -1022,6 +1068,9 @@ class MainActivity : Activity() {
         selectedAlbumVideoCount = preferences.selectedAlbumVideoCount()
         selectionMode = preferences.photoSelectionMode()
         closeAlbumPicker()
+        pickerRootView = null
+        pickerRefreshError = null
+        pickerRefreshRetry = null
         albumError.visibility = View.GONE
         setContentView(settingsScreen)
         refreshSettingsControls()
@@ -1031,6 +1080,9 @@ class MainActivity : Activity() {
     private fun closeAlbumPicker() {
         pickerOpen = false
         catalogLoadToken++
+        pickerRootView = null
+        pickerRefreshError = null
+        pickerRefreshRetry = null
         albumCoverSource?.close()
         albumCoverSource = null
         requestedCoverIds.clear()
