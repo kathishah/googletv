@@ -215,7 +215,11 @@ class MainActivity : Activity() {
         val path = input(getString(R.string.smb_path_hint), draftSmbConfig.rootPath)
         smbFields = listOf(host, share, path)
         listOf("IP address", "Share name", "Library path").zip(smbFields).forEach { (label, field) ->
-            root.addView(text(label, 16f, true).apply { setPadding(0, dp(8), 0, dp(5)) })
+            root.addView(text(label, 16f, true).apply {
+                setPadding(0, dp(8), 0, dp(5))
+                labelFor = field.id
+                isAccessibilityHeading = true
+            })
             root.addView(field, LinearLayout.LayoutParams(-1, dp(54)))
         }
         root.addView(text(getString(R.string.smb_source_note), 14f, false).apply {
@@ -302,11 +306,12 @@ class MainActivity : Activity() {
             }
             this.background = background
         }
-        val label = text(title, 16f, true)
+        val label = text(title, 16f, true).apply { isAccessibilityHeading = true }
         row.addView(label, LinearLayout.LayoutParams(dp(165), dp(38)))
         val optionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val buttons = choices.mapIndexed { index, (caption, action) ->
             button(caption, action).apply {
+                contentDescription = "$title, $caption"
                 textSize = 13f
                 minHeight = dp(36)
                 setPadding(dp(5), 0, dp(5), 0)
@@ -324,7 +329,10 @@ class MainActivity : Activity() {
     private fun refreshSettingsControls() {
         fun mark(key: String, selected: Int) {
             choiceButtons[key].orEmpty().forEachIndexed { index, view ->
-                view.setBackgroundTintList(ColorStateList.valueOf(if (index == selected) SELECTED_COLOR else BUTTON_COLOR))
+                val isChoiceSelected = index == selected
+                view.setBackgroundTintList(ColorStateList.valueOf(if (isChoiceSelected) SELECTED_COLOR else BUTTON_COLOR))
+                view.isSelected = isChoiceSelected
+                view.stateDescription = if (isChoiceSelected) "Selected" else "Not selected"
             }
         }
         mark("source", if (sourceMode == PhotoSourceMode.BUNDLED) 0 else 1)
@@ -552,6 +560,7 @@ class MainActivity : Activity() {
     }
 
     private fun input(hint: String, value: String) = EditText(this).apply {
+        id = View.generateViewId()
         this.hint = hint
         setText(value)
         textSize = 17f
