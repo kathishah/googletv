@@ -51,6 +51,7 @@ The settings table changes in two rows:
 - The DreamService does not play videos, does not read the video list, and never starts a `MediaPlayer`.
 - **Type = Photos:** unchanged. The screensaver honors Media (*All* or *Choose Albums*), the saved albums, Pool, Interval, and Label.
 - **Type = Photos + Videos or Videos:** the screensaver ignores Media, the saved albums, Type, and Pool, and shows a random pool of **500 photos** drawn from the whole library (the same sampling as *All*). Interval and Label still apply. The saved albums and Type stay saved for the in-app slideshow.
+- **Catalog:** the screensaver uses the catalog last refreshed from the app. If that catalog is missing or its format is no longer supported, the screensaver asks you to refresh the album catalog in the app instead of building it during idle startup. It does not check the Mac for newer Photos changes at dream start; refresh in the app to pick those up.
 - The settings screen says so under the Type row: "App slideshow only. Screensaver shows 500 random photos."
 - Implementation: `PhotoSourceFactory.create` takes a `forDream` flag; when it is true and Type is not Photos it returns the *All* source with a pool of 500. The in-app slideshow passes false. This rule is the only change to the screensaver path.
 - Assumption to confirm: "random 500 photos" means the whole library, so a saved album selection is also ignored while Type includes videos.

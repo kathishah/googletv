@@ -84,6 +84,8 @@ class SmbGuestPhotoSource(
     private val selectedAlbumMode: Boolean = selectedAlbumIds.isNotEmpty(),
     /** What the in-app slideshow plays. The screensaver always passes [MediaType.PHOTOS]. */
     private val mediaType: MediaType = MediaType.PHOTOS,
+    /** When true, the DreamService must use an app-refreshed catalog and never build one itself. */
+    private val requireSavedCatalog: Boolean = false,
 ) : PhotoSource {
     private val validatedConfig = config.validated()
     private val host = validatedConfig.host
@@ -113,13 +115,23 @@ class SmbGuestPhotoSource(
      * built, or an older version waiting for a refresh) nothing is filtered; the log says so.
      */
     private fun savedExclusion(): PathSet {
-        val index = PhotosAlbumCatalog.read(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        val index = readSavedCatalog()
         if (index == null) {
             Log.w(LOG_TAG, "No usable album catalog: screenshots, documents, and receipts are not filtered until it is refreshed")
             return PathSet.NONE
         }
         notePortraits(index)
         return PathSet(index.excludedPaths)
+    }
+
+    /** The idle DreamService does not run a catalog rebuild; the app owns refresh and its progress UI. */
+    private fun readSavedCatalog(): AlbumIndex? {
+        val file = java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE)
+        val index = PhotosAlbumCatalog.read(file)
+        if (requireSavedCatalog && index == null) {
+            throw AlbumIndexException("The Photos catalog needs a refresh. Open the app and refresh the album catalog.")
+        }
+        return index
     }
 
     // The catalog's portrait list, kept for isPairable. Replaced on every listing, read on the player's worker thread.
@@ -135,7 +147,7 @@ class SmbGuestPhotoSource(
     /** All photos plus videos from the catalog, or only videos, in proportion to the library's mix. */
     private fun loadLibrarySlidesWithVideos(): List<Slide> {
         ProgressiveReader.purgeStale(videoCacheDirectory)
-        val index = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        val index = playbackCatalog()
         notePortraits(index)
         val libraryVideos = index.videos
         if (mediaType == MediaType.VIDEOS) {
@@ -367,7 +379,7 @@ class SmbGuestPhotoSource(
         if (selectedAlbumIds.isEmpty()) {
             throw AlbumIndexException("No albums are selected. Choose at least one album or switch to All photos.")
         }
-        val index = loadAlbumIndex(java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE))
+        val index = playbackCatalog()
         notePortraits(index)
         val byId = index.albums.associateBy { it.id }
         if ((selectedAlbumIds - byId.keys).isNotEmpty()) {
@@ -405,6 +417,11 @@ class SmbGuestPhotoSource(
             )
         }
         return SlideMixer.shuffleTogether(photos, videos)
+    }
+
+    private fun playbackCatalog(): AlbumIndex {
+        val file = java.io.File(catalogCacheDirectory, ALBUM_CATALOG_FILE)
+        return if (requireSavedCatalog) readSavedCatalog()!! else loadAlbumIndex(file)
     }
 
     /**
