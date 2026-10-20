@@ -1,6 +1,6 @@
 # SMB access probes
 
-Diagnostics and the permission script from the HEIC `STATUS_ACCESS_DENIED` investigation. For commands and results, see [device testing](../../docs/DEVICE_TESTING.md#heic-status_access_denied-investigation-2026-10-13). For the decision, see [photo sources](../../docs/PHOTO_SOURCES.md#guest-read-permissions-per-file-2026-10-13).
+Diagnostics and the permission script from the HEIC `STATUS_ACCESS_DENIED` investigation. For commands and results, see [device testing](../../journal/2026-10-13-1223-heic-status_access_denied-investigation.md). For the decision, see [photo sources](../../journal/2026-10-13-1223-guest-read-permissions-per-file.md).
 
 Every tool here prints counts only. Never commit sample lists, manifests, host addresses, or photo filenames.
 

@@ -1,7 +1,7 @@
 package com.googletv.screensaver.playback
 
 /**
- * What happens when a pair's photos do not both load (docs/MULTI_IMAGE.md, "States and errors"). Plain
+ * What happens when a pair's photos do not both load (docs/PRODUCT.md, Portrait pairs, "States and errors"). Plain
  * Kotlin so the rules run in JVM tests; the player owns the threads and the bitmaps.
  */
 internal object PairFailureRules {

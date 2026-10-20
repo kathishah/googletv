@@ -1,6 +1,6 @@
 package com.googletv.screensaver.playback
 
-// Diagnostic only; not part of the app. Run with app_process on the TV (see docs/DEVICE_TESTING.md).
+// Diagnostic only; not part of the app. Run with app_process on the TV (see journal/2026-10-17-1813-video-decode-survey.md).
 // Part 1 prints decoder capabilities for the video formats found in the library, with no input.
 // Part 2 demuxes and decodes the first few seconds of each clip in a directory on the TV and prints
 // one line per clip by index: no filenames, paths, or hosts.

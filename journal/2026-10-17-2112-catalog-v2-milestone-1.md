@@ -1,0 +1,11 @@
+# Catalog v2, milestone 1 (2026-10-17)
+
+Moved verbatim from `docs/DEVICE_TESTING.md` on 2026-10-19, with links updated for the new location.
+
+Built with `cd apps/screensaver && JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` (47 JVM tests pass, 23 of them new for the mapper and JSON; lint 0 errors; `org.json:json:20250517` added as a test-only dependency because `android.jar` only has stubs for it), installed with `adb install -r app/build/outputs/apk/debug/app-debug.apk`. Timings from `adb logcat -s PhotoSource`; catalog content checked offline from a copy of the catalog (private paths stay in scratch, only counts are recorded).
+
+- **v1 rejected and rebuilt:** the saved v1 catalog (1.66 MB) was rejected and rebuilt on opening Choose Albums, then the file was 2.25 MB. A catalog without the `videos` sections, with mismatched counts, unsafe paths, duplicates, or a wrong version is rejected (JVM tests).
+- **Counts after the rebuild:** 759 albums, 33,368 photo memberships (15,155 unique paths), 3,258 library videos, 3,862 video memberships (1,863 distinct videos in 373 albums). Photos went from 758 albums and 33,305 paths because the clone had newer data (its database and WAL were modified at 20:33 that evening); the photo rules are unchanged. Video count check against the survey snapshot: 3,354 active videos, minus 35 with no file size, minus 65 stored outside `originals`, plus 4 added since the snapshot, equals 3,258. Extensions: mov 2,356, mp4 870, m4v 21, 3gp 6, avi 5. Bitrates above 40 Mbps: 52 clips.
+- **Timings:** see the three rows in [album selection](2026-10-17-1617-album-refresh-timings.md). The first attempt joined the attributes table on all 38,000 membership rows and took 78.8 s (rows phase 26.6 s); resolving album videos against the library list brought the rebuild to 51.1 s, about 5 s more than v1's 45.9 s. The unchanged shortcut took 3.4 s (catalog read 2.3 s), and the picker's cached read was 0.9 s.
+- **Identity:** after the optimization the rebuilt catalog's albums and videos lists were identical to the version verified before it.
+- **Not covered:** the settings row and the picker's use of the counts (milestone 2).

@@ -2,7 +2,7 @@ package com.googletv.screensaver.playback
 
 import kotlin.random.Random
 
-/** The four backgrounds a pair can have behind its photos (see docs/MULTI_IMAGE.md, "Three-slice background"). */
+/** The four backgrounds a pair can have behind its photos (see docs/PRODUCT.md, Portrait pairs, "Three-slice background"). */
 enum class PairStyle(val label: String) {
     PINSTRIPES("Pinstripes"),
     DIAMOND_LATTICE("Diamond lattice"),

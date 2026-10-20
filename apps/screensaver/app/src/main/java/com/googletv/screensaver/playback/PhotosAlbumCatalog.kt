@@ -30,8 +30,8 @@ internal object PhotosAlbumCatalog {
     /** `ZASSET.ZSAVEDASSETTYPE` of assets that come from iCloud Shared Albums rather than the user's own originals. */
     private const val SHARED_ASSET_TYPE = 4
 
-    // Exclusion rules, from Photos' own classification (see docs/PHOTO_SOURCES.md, "Excluding
-    // screenshots, documents, and receipts"). `ZSCENECLASSIFICATION` rows of type 0 carry a scene id and a
+    // Exclusion rules, from Photos' own classification (see journal/2026-10-18-1219-excluding-
+    // screenshots-documents-receipts.md). `ZSCENECLASSIFICATION` rows of type 0 carry a scene id and a
     // confidence per asset. Ids 492 (document) and 1086 (receipt) are the same in Apple's scene taxonomy
     // versions 84 and 99. Sampled on this library, document confidence of 0.4 and up was about 90% to
     // 100% real documents; 0.2 to 0.4 was about half family photos, so it is not excluded.

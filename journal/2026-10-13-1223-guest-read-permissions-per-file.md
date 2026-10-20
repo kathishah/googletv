@@ -1,0 +1,9 @@
+# Guest read permissions per file (2026-10-13)
+
+Moved verbatim from `docs/PHOTO_SOURCES.md` on 2026-10-19, with links updated for the new location. Inline corrections and updates are kept as originally written.
+
+At the time of the initial sample, Guest could list the whole `originals` tree and read file attributes, but data opens were denied for every file reported as mode 0600: all 25 HEIC and 11 JPEG in the sample. They succeeded for the 4 JPEGs reported as 0644. The Mac's own SMB client and the TV's SMBJ client gave the same results, including a minimal `FILE_READ_DATA` request from the TV. That HEIC-only failure was a permissions result, not a format or decoder result. The user later made the supported originals readable by Guest; 12 MP HEICs then displayed on the TV. 24 MP HEIC decoding remains a separate issue (see the current work order in [the roadmap](2026-10-19-2246-roadmap-history.md#current-work-order)). EXIF labels are unavailable for files Guest cannot read, because EXIF needs file data.
+
+The shared package is a clone of the live library. A later read-only comparison on the Mac mini showed that sampled files had identical modes, ownership, and bytes on both drives: the 0600 modes originated in the live library, and the clone volume enforces ownership. The user addressed Guest access by adding read permission to supported photo files on the live library, then refreshing the clone. The full contents of the two libraries have not been compared.
+
+Assumption change: a Guest share of `originals` exposes only the originals whose server-side permissions let Guest read them. The user chose the storage-permission change and applied it to all 18,601 supported files that were unreadable by others; the clone scan found zero remaining unreadable files after refresh. New files are covered by the daily permission-script run and daily clone. See [the investigation](2026-10-13-1223-heic-status_access_denied-investigation.md).

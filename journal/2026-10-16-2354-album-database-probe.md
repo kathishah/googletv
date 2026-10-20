@@ -1,0 +1,5 @@
+# Album database probe (2026-10-16)
+
+Moved verbatim from `docs/PHOTO_SOURCES.md` on 2026-10-19, with links updated for the new location. Inline corrections and updates are kept as originally written.
+
+To check whether album membership can be associated with files already on the clone, the Photos SQLite database was opened read-only with SQLite's immutable mode. The regular-album relationship is represented by `ZGENERICALBUM` (entity 34) joined through `Z_34ASSETS` to `ZASSET`. In this clone, the tables contained 764 album records; 756 had asset links, comprising 38,431 membership links and 17,474 distinct assets. Every joined asset row had a non-null directory and filename. Two sampled references resolved to readable files under `Photos Library.photoslibrary/originals`. This is evidence that regular album membership can be mapped to the cloned originals for at least the tested samples; it does not establish that every reference is current or usable, or that Apple's private schema will remain stable. No photo filenames are recorded here.

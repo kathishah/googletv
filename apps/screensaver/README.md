@@ -1,40 +1,32 @@
 # Photo screensaver
 
-First planned Google TV app.
+A Kotlin / Android Views app for Google TV: a remote-friendly settings screen, a manual preview, and an Android `DreamService` that the system starts on idle. It runs on a TCL 65" A300 (Android TV 12, `minSdk 31`).
 
-## Current state
+**It only works with an Apple Photos library**, read from the Mac mini's `Photos` SMB share, strictly read-only with explicit SMB Guest access. Three bundled public-domain artworks are a demo source and the fallback while the share is unreachable ([ASSETS.md](ASSETS.md)).
 
-The app uses Kotlin and Android Views, with a remote-friendly settings activity, manual preview, and a shared Android `DreamService` slideshow. It supports bundled samples, read-only SMB Guest access, a local regular-album catalog with explicit refresh, photo/video type selection, single and portrait-pair layouts, and location/date or no-label modes. Legacy Date-only preference values are unsupported and fall back to Location + date.
+## What it does
 
-The app DreamService starts on idle on the TCL A300 at the default timeout. Testing on this firmware found no separate TCL Auto Launch control and none was needed for observed activation. SMB photos, large HEICs, video playback, catalog refresh, and picker behavior have device findings in [DEVICE_TESTING.md](../../docs/DEVICE_TESTING.md#device-findings).
+- **All or Choose Albums.** *All* shuffles a random sample of 100, 250, 500 or 1,000 supported items from the library. *Choose Albums* plays every usable photo in the regular Photos albums you pick. The album list comes from a catalog the TV builds from a staged copy of the Photos database and keeps in app-private storage; **Refresh** rebuilds it ([album selection](../../docs/PRODUCT.md#album-picker)).
+- **Type.** Photos, Photos + Videos, or Videos. Videos play muted in the in-app slideshow only; the screensaver shows 500 random photos instead ([media type](../../docs/PRODUCT.md#videos)).
+- **Hides screenshots, documents and receipts**, using Photos' own classification.
+- **Layout.** Single photos, or portrait photos paired side by side over patterned backgrounds ([multi-image layouts](../../docs/PRODUCT.md#portrait-pairs)).
+- **Labels.** Place name plus date from the photo's EXIF data, or no label. Place names are best effort; GPS coordinates show when none resolves.
+- **Large HEIC photos.** 24 MP+ HEIC images are decoded with a bundled libheif/libde265 tile decoder, because the TV's platform decoders reject them.
 
-The bundled landscape and portrait sample photos are generated demo assets. The blocking `PhotoSource` interface runs on the slideshow worker. In **All** mode, the read-only SMB adapter scans and uniformly samples up to the selected 100, 250, 500, or 1,000 supported items, then shuffles them; it does not persist an index. In **Choose Albums** mode, playback uses all usable photos in the saved selection from the TV's persistent local catalog. Per-file unreadable photos are skipped; transient SMB listing/read failures retry with backoff, and after three consecutive failures stored artworks appear until the source recovers. Location + date uses EXIF GPS and capture-date metadata; geocoding is best effort, and coordinates remain when no place name resolves. No label suppresses captions. The tested share requires explicit Guest access and must not require SMB signing; check it with `python3 tools/check_smb_signing.py "$MAC_MINI_IP"`. The default configured folder is `Photos Library.photoslibrary/originals`; hidden and recently deleted photos can appear by user decision.
+## Settings
 
-Build and lint from this directory:
+The settings screen is a compact table (Photo source, Media, Type, Pool, Interval, Layout, Label). Changes stay staged until **Save**. The choices and what each applies to are in the [settings reference](../../docs/PRODUCT.md#settings).
 
-```sh
-JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
-ANDROID_HOME="$HOME/Library/Android/sdk" \
-./gradlew :app:assembleDebug :app:lintDebug
-```
+## When things go wrong
 
-Install or update the debug build:
+- **Share unreachable.** The slideshow retries with backoff. After three consecutive failures it shows the stored artworks with the caption "SMB failure. Loading…" and returns to photos as soon as a read succeeds.
+- **Configuration errors** (Guest rejected, signing required, wrong share) show a message and do not retry.
+- **Screensaver and the catalog.** The screensaver uses the catalog last refreshed in the app. If it is missing or in an unsupported format, the screensaver asks you to refresh in the app; it does not build one during idle startup.
 
-```sh
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+## Build, install, and learn more
 
-## Initial build
-
-- TV launcher screen with remote navigation and a manual slideshow preview.
-- Android `DreamService` using the same slideshow engine.
-- Local sample photos, a user-selected interval, an empty state, and asynchronous source error handling.
-- On-device verification on the TCL TV (Android TV 12, `minSdk 31`), including selecting the dream with `adb`. The app started on idle at the default timeout; no separate TCL Auto Launch control was found or needed for observed activation. See the [device findings](../../docs/DEVICE_TESTING.md#device-findings).
-
-The first real source reads available image files under `Photos Library.photoslibrary/originals/` through the existing SMB share, strictly read-only. The tested share allows explicit SMB Guest access and rejects anonymous access. SMBJ needs the Mac mini's SMB server not to require signing for Guest sessions. With that server preference set, Guest listing and image loading work from the TV in manual preview. `originals` can include hidden and recently deleted photos; the user accepts that without a warning or opt-in. See the [product spec](../../docs/PRODUCT.md), [album selection](../../docs/ALBUM_SELECTION.md), and [photo source constraints](../../docs/PHOTO_SOURCES.md).
-
-## Regular Photos album catalog
-
-On first **Choose Albums** use, the TV stages `Photos.sqlite` and any matching WAL file from the read-only SMB share, queries the local SQLite snapshot in read-only mode, and atomically saves a metadata-only JSON catalog in persistent app-private storage. A determinate progress bar reports bytes copied across both database files. Reopening the picker and selected-album playback use the local catalog; **Refresh** rebuilds it. If the cache is lost or invalid, the next picker open rebuilds it from SQLite. No JSON sidecar is generated on the Mac or stored on the share, and no photo files are exported or duplicated. `tools/generate_photos_album_index.py` remains research tooling only. The current implementation validates supported, contained relative paths while building the catalog and verifies readability when building the selected playback set. The catalog and cached cover thumbnails have been displayed on the TCL. Exact TV transfer/query timings and database/WAL consistency during an actual CCC refresh remain open; see the [album selection investigation](../../docs/ALBUM_SELECTION.md#refresh-performance-investigation).
-
-The launcher settings use a compact table for source, photo selection, pool, interval, and label. SMB connection fields are on a separate screen. Main settings changes are staged until **Save**; **Cancel** restores saved settings. The album carousel saves selection changes immediately; **Done** or remote Back returns to settings. See the [album selection spec](../../docs/ALBUM_SELECTION.md).
+- Build, install and set as the screensaver: [root README](../../README.md#build-and-install).
+- How the code is organized: [architecture](../../docs/ARCHITECTURE.md#code-map).
+- TV setup and the release checklist: [device testing](../../docs/DEVICE_TESTING.md).
+- Why only Apple Photos, and how the Mac mini is configured: [photo sources](../../docs/PHOTO_SOURCES.md).
+- The history of findings and measurements: [journal](../../journal/README.md).

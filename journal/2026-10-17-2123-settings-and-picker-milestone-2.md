@@ -1,0 +1,13 @@
+# Settings and picker, milestone 2 (2026-10-17)
+
+Moved verbatim from `docs/DEVICE_TESTING.md` on 2026-10-19, with links updated for the new location.
+
+Built and installed with the same commands as milestone 1 (56 JVM tests pass, 10 of them for `MediaTypeRules`; lint 0 errors). Screens were checked with screenshots of the settings screen (no private content) and, for the picker, by reading text patterns from `uiautomator dump` with album names left out. The D-pad was driven with `adb shell input keyevent` and a small script that steers by the focused element's position.
+
+- **Settings screen:** the old Photos row is now **Media** (All, Choose Albums) with its summary beside it, and a new **Type** row (Photos, Photos + Videos, Videos) sits directly under it. All six rows and the Preview, Save and Cancel buttons fit the TV after trimming about 52 px of vertical padding; with a video Type a one-line note appears ("Videos play in the app slideshow only. The screensaver shows 500 random photos. Video playback isn't available in this build yet." The last sentence is temporary and goes away in milestone 4).
+- **Picker, Type = Photos (unchanged):** header "PHOTO SOURCE · SMB SHARE", cards "N pictures", no badges, total "N albums · N pictures".
+- **Picker, Type = Photos + Videos:** header adds "· TYPE: PHOTOS + VIDEOS", cards "N pictures · N videos", the ▶ video badge on the four visible cards that have videos, total "N albums · N items".
+- **Picker, Type = Videos:** header "· TYPE: VIDEOS", cards "N videos" with the badge, "No videos" on an empty card (dimmed), total "N albums · N videos", and the warning "N selected album(s) have no videos…".
+- **Stored values:** `media_type` is saved (`PHOTOS_AND_VIDEOS` while tested, `PHOTOS` at the end), independent of `photo_selection_mode`; the picker now also stores the selection's distinct photo and video totals (953 photos, 83 videos for the current 11 albums). A selection saved before video counts existed has no video total, and the summary leaves it out instead of showing "0 videos".
+- **Screensaver fallback:** `Somnambulator` was started with `adb shell am start -n com.android.systemui/.Somnambulator` and the log read with `adb logcat -s PhotoSource`. With Type = Photos + Videos saved: "Screensaver shows 500 random photos because Type includes videos" and "Photo listing found 500 pooled photos in 4000 ms", ignoring both the saved albums and the 1,000 pool. With Type = Photos saved: the dream read the album catalog instead and logged no fallback line.
+- **Not covered:** idle-timeout activation with a video Type (the screensaver was started directly), the Interval note from the mock, and poster-frame covers (albums with only videos show a blank cover until milestone 6).

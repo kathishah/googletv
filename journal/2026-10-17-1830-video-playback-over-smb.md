@@ -1,0 +1,25 @@
+# Video playback over SMB (2026-10-17)
+
+Moved verbatim from `docs/DEVICE_TESTING.md` on 2026-10-19, with links updated for the new location.
+
+`tools/smb_access_probe/VideoPlaybackProbe.kt` is a temporary activity (copied into the app, with an `<activity android:name=".VideoPlaybackProbe" android:exported="true" />` manifest entry, both removed afterwards). It plays clips from the share through the platform `MediaPlayer` and a `MediaDataSource` that reads 1 MiB blocks over SMB Guest, reading ahead on six threads, muted. Clips were chosen from the library database by metadata, and only labels were logged. Logs use the `VideoProbe` tag.
+
+- **Typical landscape clip** (1080p H.264, 29.6 s, 9.4 Mbps): prepared in 2.4 s, first frame at 2.6 s, no buffering events or stalls, and the bytes read from the share equalled the file size (no refetch).
+- **Portrait clip with rotation metadata** (1080p H.264, 30.6 s, 9.3 Mbps): prepared in 1.3–1.7 s, first frame at 1.5–2.0 s, no stalls. `MediaPlayer` reported the size as 1080×1920, so it applied the rotation itself. The user watched it on the TV: it was upright and, once the view was sized to the clip's aspect ratio, correctly proportioned.
+- **Readable clip with the highest bitrate** (portrait, 18.4 Mbps, 5.3 s): first frame at 1.2 s, no stalls.
+- **Harness lessons:** with a block cache that evicted the file's start and end, a 34.5 MB clip caused 88 MB of reads and a 12.4 s first frame, because the player reads the end of the file (`moov`) first and then jumps to the start. Keep the head and tail of the file cached. Stopping read-ahead by interrupting its threads broke the shared SMB connection, so use a connection per clip or drain the threads. A `SurfaceView` stretches video to its own size, so the player view must be resized to the clip's aspect ratio (letterbox). The shape measured by `PixelCopy` was unreliable because it scales into the bitmap, so only the user's visual check counts for orientation.
+- **Raw SMB read rate** on a 100 MB readable file: 7.0 MB/s (56 Mbps) with one thread, 7.5 MB/s (60 Mbps) with three, 5.8 MB/s (47 Mbps) with six. More parallel reads do not help; earlier sequential copies reached 8.9–9.9 MB/s. So clips above roughly 50 Mbps cannot be streamed in real time on this link.
+- **Heavy clips:** the 4K HLG clip (71 Mbps) and the highest-bitrate clip (89 Mbps, 1080p HEVC) were owner-only and could not be opened by Guest until the permission script was extended to videos (see below).
+
+**Heavy clips, after the permission change (same day).** Both clips are now readable; in the 28-video sample 28 of 28 were world-readable, up from 8. Results with `MediaPlayer`, muted, 1 MiB blocks:
+
+| Clip | Reading mode | First frame | Wall time vs clip length | Stalls and refetch |
+| --- | --- | --- | --- | --- |
+| 4K HLG, 2160×3840 after rotation, 71 Mbps, 15.7 s | six-thread read-ahead | 2.3 s | 19.7 s | none; bytes equalled file size |
+| 4K HLG | on-demand reads, one at a time | 0.5 s | 18.6 s | none; per-fetch rate 9.4 MB/s |
+| 1080p HEVC portrait, 89 Mbps, 25.7 s | six-thread read-ahead | 3.4 s | 42.0 s | 2 stalls recorded, 84 refetches, 31% extra bytes |
+| 1080p HEVC portrait, 89 Mbps | on-demand reads | 0.4 s | 46.0 s | 15 refetches |
+
+**Control test, local storage:** the same two files copied to the app's private storage on the TV and played with the same screen (the probe plays a path that starts with `/` from local storage) ran in real time: the 4K HLG clip (15.7 s) in 16.1 s with first frame at 0.44 s, and the 89 Mbps clip (25.7 s) in 26.0 s with first frame at 0.32 s, with no stalls. So the player and hardware decoders handle both clips, and the slowdown over SMB is purely data starvation. The copies and the test screen were deleted afterwards. A single raw sequential read of the 287 MB file ran at 9.2 MB/s (74 Mbps). Conclusions: the 71 Mbps 4K HLG clip plays, with about 3 s of extra delay, because it sits at the link's ceiling; the 89 Mbps clip is above what the link sustains and played at roughly 0.55 times real speed. Six-thread read-ahead was counterproductive here (per-fetch rate 1.4–2.1 MB/s against 9.4 MB/s for a single reader), and it increased first-frame time and refetching, so a real data source should use one sequential reader with a bounded buffer. By library bitrate (size divided by duration): 48.7% of clips are under 10 Mbps, 48.3% are 10–20, 1.5% are 20–40, 1.3% are 40–60, and 0.3% (9 clips) exceed 60 Mbps; 51 clips (1.5%) are above 40 Mbps.
+
+**Guest denial recurred (second incident).** After the CCC clone, every Guest operation returned `STATUS_ACCESS_DENIED` again, including listing the share root, even from the development Mac with the same SMBJ login; the authenticated mount kept working. It cleared immediately after `sudo -u nobody ls` on the library folder was run on the Mac mini. The first incident also cleared after someone touched the library from the Mac mini, though other things happened in that window. Both followed CCC activity. Cause unknown; workaround: list the library folder as another user on the Mac mini.

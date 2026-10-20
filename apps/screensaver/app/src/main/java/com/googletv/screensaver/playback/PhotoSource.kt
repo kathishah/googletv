@@ -69,7 +69,7 @@ class BundledSamplePhotoSource(
         "art_lamentation_of_christ" to R.drawable.art_lamentation_of_christ,
     )
 
-    // Public-domain artworks; sources are recorded in docs/PHOTO_SOURCES.md.
+    // Public-domain artworks; sources are recorded in apps/screensaver/ASSETS.md.
     override fun loadSlides() = listOf(
         Slide("art_creation_of_adam", "The Creation of Adam · Michelangelo"),
         Slide("art_last_supper", "The Last Supper · Leonardo da Vinci"),

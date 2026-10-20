@@ -2,7 +2,7 @@ package com.googletv.screensaver.playback
 
 // Diagnostic only; not part of the app. Copy temporarily into
 // apps/screensaver/app/src/main/java/com/googletv/screensaver/playback/, build assembleDebug, push the APK
-// to /data/local/tmp, and run it with app_process (see docs/DEVICE_TESTING.md). Remove it afterward.
+// to /data/local/tmp, and run it with app_process (see journal/2026-10-13-1223-heic-status_access_denied-investigation.md). Remove it afterward.
 // Read-only opens only. Reads host then
 // "ext\tmacResult\trelativePath" lines from stdin. Prints aggregated counts only.
 

@@ -2,7 +2,7 @@ package com.googletv.screensaver
 
 // Diagnostic only; not part of the app. A temporary activity that plays clips from the SMB share
 // through the platform MediaPlayer and logs load, first-frame, stall, and throughput numbers.
-// Setup (see docs/DEVICE_TESTING.md): copy into the app's package, add
+// Setup (see journal/2026-10-17-1830-video-playback-over-smb.md): copy into the app's package, add
 //   <activity android:name=".VideoPlaybackProbe" android:exported="true" />
 // to the manifest, build, install, write "label<TAB>path relative to originals<TAB>prefetch blocks"
 // lines to files/vtest.txt with run-as (a path starting with "/" is played from local storage instead of

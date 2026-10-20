@@ -1,5 +1,7 @@
 # Existing app survey
 
+Moved verbatim from `docs/APPS_RESEARCH.md` on 2026-10-19, with links updated for the new location. Dated at the commit that first recorded it.
+
 Checked 2026-10-04 from public Google Play listings, developer documentation, and Google/Apple help pages. Ratings and availability can change and Google Play may filter apps differently on the TCL TV. None of these apps has been installed or tested on this TV yet.
 
 ## Closest options
@@ -32,6 +34,6 @@ Checked 2026-10-04 from public Google Play listings, developer documentation, an
 3. If one automatic screensaver must mix sources, test PhotoWall with a *test* public iCloud Shared Album first; there is not yet enough review history to call it established.
 4. If reliability matters more than direct cloud connection, export/sync photos to USB or a local share and test Aerial Views. Its [maintainer's setup guide](https://github.com/theothernt/AerialViews) notes that some TCL Google TVs need Auto Launch permission for a third-party screensaver.
 
-Update 2026-10-11: with SMB from the Mac mini chosen as the source, Aerial Views is the closest existing match. It is open source, reads photos from SMB, and its guide documents selecting it with `adb` on Google TV. It is now an optional validation step before writing code ([setup step 6](DEVICE_TESTING.md#6-optional-prove-the-whole-path-with-aerial-views), [roadmap milestone 1](ROADMAP.md#1-optional-validate-the-tv-path-with-an-existing-app)). Not yet checked: whether it supports SMB Guest access and HEIC.
+Update 2026-10-11: with SMB from the Mac mini chosen as the source, Aerial Views is the closest existing match. It is open source, reads photos from SMB, and its guide documents selecting it with `adb` on Google TV. It is now an optional validation step before writing code ([setup step 6](../docs/DEVICE_TESTING.md#6-optional-prove-the-whole-path-with-aerial-views), [roadmap milestone 1](2026-10-19-2246-roadmap-history.md#1-optional-validate-the-tv-path-with-an-existing-app)). Not yet checked: whether it supports SMB Guest access and HEIC.
 
-No well-reviewed app found in this survey clearly supports private Apple Photos **and** automatically syncing Google Photos albums **and** a user-defined interval **and** confirmed idle screensaver operation on this TCL model. The TV is now known (TCL 65" A300, Android TV 12; see [known TV facts](DEVICE_TESTING.md#known-tv-facts)), but screensaver compatibility is not settled until tested on it.
+No well-reviewed app found in this survey clearly supports private Apple Photos **and** automatically syncing Google Photos albums **and** a user-defined interval **and** confirmed idle screensaver operation on this TCL model. The TV is now known (TCL 65" A300, Android TV 12; see [known TV facts](../docs/DEVICE_TESTING.md#known-tv-facts)), but screensaver compatibility is not settled until tested on it.

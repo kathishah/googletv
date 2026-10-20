@@ -1,0 +1,13 @@
+# Unreadable share at screensaver start (2026-10-18)
+
+Moved verbatim from `docs/DEVICE_TESTING.md` on 2026-10-19, with links updated for the new location.
+
+At the 12:27 idle start the screensaver stopped on "The selected albums have no readable supported photos" and stayed there; a restart minutes later loaded all 942 photos. The start-up check opens up to 8 random photos from the selected albums, and when none opened it cleared the list and threw an error the player never retries. Only per-file SMB errors (access denied, not found, sharing violation) count as unreadable, so the share was reachable but refusing or missing its files, as on 2026-10-17 during clone activity. The 12:27 log had rolled off the TV, so the exact status is unknown.
+
+**Fix:** the check is now `ReadableSample`, and when none of the sampled photos opens it logs the SMB status names with counts (no paths) and throws `ShareUnreadableException`, classified as temporary. The player retries with 2/4/8/15 s backoff and, after 3 failures, shows the stored artworks with "SMB failure. Loading…", like a failed listing. A selection that is truly empty (every photo excluded or unusable) still stops with the original message. 132 JVM tests pass (8 new), lint 0 errors.
+
+**TV check:** a test catalog with one album whose 20 paths do not exist on the share (built from real paths with a missing first folder) was loaded, with settings set to Choose Albums on that album, and the screensaver started at a 60 s idle timeout. Log: `None of 8 sampled photos could be opened: STATUS_OBJECT_NAME_NOT_FOUND x8`, `Photo listing attempt 5 failed (TRANSIENT, ShareUnreadableException)`, `Retrying photo listing in 15000 ms`, and `Showing stored photos until the photo source recovers`. A screenshot showed a stored artwork with "SMB failure. Loading…". The working catalog (same 20 paths, real folder) was then swapped in without stopping the screensaver: 4 s later `Album slides ready: 20 photos` and `Stored photos hidden`, and a screenshot showed a photo. Restored: the real catalog and settings are byte-identical to the copies taken first, the idle timeout is 600000 ms, and the dream is still selected. Scratch files were deleted.
+
+**Not covered:** an actual Guest-denied share (the test used missing paths, the same per-file path through the code); the cause of the 12:27 refusal.
+
+**Deployed:** the fix is commit `af3a0ba`. A clean rebuild (same Gradle command as above) was installed with `adb install -r` and the settings screen shows `Build af3a0ba4` with no `-dirty` suffix. The saved catalog (2,207,985 bytes) and settings survived, the DreamService is still selected, and the idle timeout is 600000 ms.
