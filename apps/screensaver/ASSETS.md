@@ -22,4 +22,4 @@ The three images are listed in `PhotoSource.kt` (the `art_*` slides and the reso
 
 ## History note
 
-Between 2026-10-12 and 2026-10-16 two other sample images (`sample_mountain_lake.jpg`, `sample_redwood_forest.jpg`) were bundled instead of these artworks. They are no longer in the tree; they remain in the git history. Their origin was not recorded at the time (they carry no camera, author or licence metadata), so nothing about their licence is claimed here.
+Between 2026-10-12 and 2026-10-16 two other sample images (`sample_mountain_lake.jpg`, `sample_redwood_forest.jpg`) were bundled instead of these artworks. They are no longer in the tree; they remain in the git history. They were generated locally with AI by the author, so no third-party licence applies to them.

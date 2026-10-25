@@ -55,7 +55,7 @@ Host addresses, drive names, firmware strings and album names stay out of Git; k
 ## Things to know before using it
 
 - **The library permissions are a decision, not a default.** Guest can read the photos only because a script on the Mac opens up file permissions, and the Mac's SMB signing requirement is turned off. Any device on the LAN that can reach the share can read every photo, including hidden and recently deleted ones. The accepted trade-offs are in [product decisions](docs/PRODUCT.md#product-decisions). Do not point this at a library or a network you are not comfortable exposing that way.
-- **Integrity is not covered by that decision.** With signing off and Guest access, a device that can impersonate the Mac on the LAN could serve crafted files to the TV's image and video decoders. Nothing in the repository records a decision about this side; treat it as an open limit, not as accepted.
+- **The SMB host is expected to be on your internal LAN.** Guest access with signing off is a deliberate choice for a trusted home network. The app is not designed for an SMB host reached over the internet or on a network you do not control.
 - **Private data stays out of Git.** No credentials, host addresses, device identifiers or photo filenames, in code, docs or logs.
 - **Re-check after TV firmware updates.** Idle activation, Art Mode behavior and the `adb` setup were verified on one firmware version. Legacy network `adb` stays enabled once USB debugging is on; turn it off when you are not working on the TV.
 
