@@ -11,14 +11,15 @@
 # The clone is never written; rerun Carbon Copy Cloner to propagate (or revert) the change.
 # Output is counts only, except `names`. The manifest holds private relative paths: it stays in
 # $STATE_DIR on the Mac mini; do not copy it into the repository.
-# LIVE and CLONE can be overridden from the environment.
+# LIVE_VOLUME, LIVE and CLONE can be overridden from the environment.
 
 set -u
 STATE_DIR="$HOME/photo-perm-trial"
 MANIFEST="$STATE_DIR/manifest.tsv"   # relative path <TAB> original octal mode
 COUNT=25
 
-: ${LIVE:="$(find /Volumes/Samsung_T5 -maxdepth 5 -type d -name 'Photos Library.photoslibrary' -prune -print 2>/dev/null | head -1)"}
+: ${LIVE_VOLUME:="/Volumes/YOUR_LIVE_DRIVE"}   # mount point of the drive holding the LIVE library
+: ${LIVE:="$(find "$LIVE_VOLUME" -maxdepth 5 -type d -name 'Photos Library.photoslibrary' -prune -print 2>/dev/null | head -1)"}
 : ${CLONE:="$(sharing -l | grep -A1 -E '^name:[[:space:]]+Photos$' | sed -nE 's/^path:[[:space:]]+//p')/Photos Library.photoslibrary"}
 
 die() { echo "error: $*" >&2; exit 1; }

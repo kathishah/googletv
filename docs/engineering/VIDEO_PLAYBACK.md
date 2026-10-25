@@ -6,7 +6,7 @@ Product behavior (the Type setting, the picker, playback rules, the screensaver 
 
 All measured on this library and the TCL (see the linked sections).
 
-- **Library** ([survey](../../journal/2026-10-17-1813-video-survey.md)): 3,354 active videos next to 34,526 photos; 73% `.mov`, 26% `.mp4`; median 32 s, 90th percentile 110 s; 63% are 1080p-class; 1,894 are in 378 regular albums. The survey used a database snapshot from the last checkpoint, so recent videos are missing.
+- **Library** ([survey](../../journal/2026-10-17-1813-video-survey.md)): ~3,400 active videos next to ~35,000 photos; 73% `.mov`, 26% `.mp4`; median 32 s, 90th percentile 110 s; 63% are 1080p-class; 1,894 are in 378 regular albums. The survey used a database snapshot from the last checkpoint, so recent videos are missing.
 - **Decode** ([TV survey](../../journal/2026-10-17-1813-video-decode-survey.md)): all 21 clips, one per distinct format found, decode on hardware (H.264, HEVC, Dolby Vision HLG up to 4K, Motion JPEG, MPEG-4, 120/240 fps, rotation).
 - **Playback** ([SMB test](../../journal/2026-10-17-1830-video-playback-over-smb.md)): typical clips start in 1.5–2.6 s and play with no stalls; rotation is applied by the player; the view must be resized to the clip's aspect ratio. From local storage even the 71 and 89 Mbps clips play in real time, so the only limit is SMB throughput.
 - **Link:** a single sequential reader sustains 6–10 MB/s (about 56–74 Mbps). Parallel reads were slower, not faster.

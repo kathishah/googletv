@@ -5,11 +5,13 @@
 # Never writes to either library and never opens the Photos database.
 
 CLONE="$(sharing -l | grep -A1 -E '^name:[[:space:]]+Photos$' | sed -nE 's/^path:[[:space:]]+//p')/Photos Library.photoslibrary"
-LIVE="$(find /Volumes/Samsung_T5 -maxdepth 5 -type d -name 'Photos Library.photoslibrary' -prune -print 2>/dev/null | head -1)"
+# LIVE_VOLUME: mount point of the drive holding the LIVE library, for example /Volumes/MyPhotosDrive.
+: ${LIVE_VOLUME:="/Volumes/YOUR_LIVE_DRIVE"}
+LIVE="$(find "$LIVE_VOLUME" -maxdepth 5 -type d -name 'Photos Library.photoslibrary' -prune -print 2>/dev/null | head -1)"
 [ -d "$CLONE/originals" ] && [ -d "$LIVE/originals" ] || { echo "library paths not found"; exit 1; }
 
 echo "== volume ownership"
-for v in /Volumes/Samsung_T5 "$(df "$CLONE" | tail -1 | sed -E 's#.* (/Volumes/.*)$#\1#')"; do
+for v in "$LIVE_VOLUME" "$(df "$CLONE" | tail -1 | sed -E 's#.* (/Volumes/.*)$#\1#')"; do
   echo "$v: $(diskutil info "$v" | grep -i owners | xargs) mount=$(mount | grep -F " on $v (" | grep -o noowners || echo no-noowners-flag)"
 done
 echo "== umask"; umask

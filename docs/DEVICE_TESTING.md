@@ -1,24 +1,21 @@
 # TCL TV setup and runbook
 
-Follow the setup steps in order. Each step lists its current status. This file is the runbook: it holds the TV facts, the setup steps and a release checklist. Dated test results are entries in [`journal/`](../journal/README.md), indexed under [Device findings](#device-findings). Never store the TV's IP address, the Mac mini's IP address, pairing codes, serial numbers, photo bytes, or photo filenames in this repository.
+Follow the setup steps in order. Each step lists its current status. This file is the runbook: it holds the TV facts, the setup steps and a release checklist. Dated test results are entries in [`journal/`](../journal/README.md), indexed under [Device findings](#device-findings). Never store the TV's IP address, the Mac mini's IP address, pairing codes, serial numbers, firmware or build strings, volume or album names, photo bytes, or photo filenames in this repository. Placeholders used in these docs: `TV_IP`, `MAC_HOST`, `LIVE_VOLUME` (the drive holding the live library), `PHOTOS_SHARE`.
 
 ## Known TV facts
 
-Read from Settings → System → About on the TV, 2026-10-11:
+Read from Settings → System → About on the TV, 2026-10-11. Only what the app depends on is kept here. Record your own TV's security patch level, kernel, OS build and firmware string in your own notes, not in this repository: they identify a particular device and firmware.
 
 | Field | Value |
 | --- | --- |
 | Android TV OS | 12 (API level 31) |
-| Security patch level | 2024-10-05 |
-| Kernel | 5.4.233+, built 2024-11-28 |
-| OS build | STT2.230203.001 |
-| Product/firmware info | V8-T65T02-LF1V187.001303. A TCL platform/firmware code, not a model name; community sources read it as platform branch, board code, and software version. Useful for tracking firmware updates. |
-| Model | TCL 65" A300 (NXTFRAME art TV, 2024), per the on-TV user guide and the box. Consistent with the Android TV 12 / October 2024 software. A Best Buy listing for the similar [65A3G Designer Series (2026)](https://support.tcl.com/en_US/a3g-series) was considered and ruled out. ADB reports generic `Smart TV` for `ro.product.model`. |
+| Model | TCL 65" A300 (NXTFRAME art TV, 2024), per the on-TV user guide and the box. ADB reports the generic `Smart TV` for `ro.product.model`. |
+| Firmware | Verified on one firmware version; re-check after updates (see the README). |
 
 What this implies:
 
 - Use `minSdk 31` so the app can install on this TV. Check current official documentation before choosing `targetSdk` and `compileSdk`.
-- The [official adb guide](https://developer.android.com/tools/adb) describes pairing-code wireless debugging. This TV's Developer options screen did not list Wireless debugging. USB debugging enabled legacy network ADB on port 5555; that port was not reachable before USB debugging was enabled.
+- The [official adb guide](https://developer.android.com/tools/adb) describes pairing-code wireless debugging. This TV's Developer options screen did not list Wireless debugging. Enabling USB debugging also enabled legacy network ADB (default port 5555), which was not reachable before. Leave it off when you are not working on the TV: legacy network ADB, once authorized, lets that computer control the TV.
 - Community reports (see [Aerial Views setup](https://github.com/theothernt/AerialViews)) say Google TV devices running Android TV 12 or later have no settings menu for choosing a third-party screensaver; one is selected with `adb` instead (step 4).
 - Community reports mention an `APP_AUTO_START` app-op on some Android TV versions, but this firmware does not expose it; see step 5.
 - The A300 is TCL's NXTFRAME "art TV". Per [TCL support](https://support.tcl.com/en_US/t-exhibition-turning-your-tcl-tv-into-a-work-of-art) and launch coverage, it has its own idle **Art Mode** (the T-Exhibition app) with an art library, AI art, and a personal photo gallery loaded from USB or the TCL Home phone app. This is separate from Google TV's Ambient mode. On this firmware, testing found that Art Mode did not interrupt a manually started artwork or the app DreamService (see step 4 and [Device findings](#device-findings)); recheck after firmware updates.

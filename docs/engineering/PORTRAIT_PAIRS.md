@@ -4,7 +4,7 @@ Product behavior (which photos pair, how the sequence is built, the layout and t
 
 ## Evidence
 
-From the clone's `Photos.sqlite`, last checkpoint, read-only, counts only. The photos counted are active, non-trashed, not shared-album copies, with screenshots, documents, and receipts left out as the slideshow does ([exclusion entry](../../journal/2026-10-18-1219-excluding-screenshots-documents-receipts.md)): **23,284 photos**, by displayed aspect ratio (width ÷ height after EXIF orientation):
+From the clone's `Photos.sqlite`, last checkpoint, read-only, counts only. The photos counted are active, non-trashed, not shared-album copies, with screenshots, documents, and receipts left out as the slideshow does ([exclusion entry](../../journal/2026-10-18-1219-excluding-screenshots-documents-receipts.md)): **~23,000 photos**, by displayed aspect ratio (width ÷ height after EXIF orientation):
 
 | Displayed aspect | Photos | Share |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ From the clone's `Photos.sqlite`, last checkpoint, read-only, counts only. The p
 | 1.45 to 1.9 (3:2, 16:9) | 1,162 | 5.0% |
 | 1.9 and wider (panorama) | 379 | 1.6% |
 
-- **A third of the library is portrait** (7,763 of 23,284, 33%), and 94% of those are 3:4, so pairs will be mostly 3:4 + 3:4 at 84% fill.
+- **A third of the library is portrait** (~7,800 of ~23,000, 33%), and 94% of those are 3:4, so pairs will be mostly 3:4 + 3:4 at 84% fill.
 - **Where the shape comes from.** `ZADDITIONALASSETATTRIBUTES.ZORIGINALWIDTH`, `ZORIGINALHEIGHT`, and `ZORIGINALORIENTATION` hold the original file's raw pixel size and EXIF orientation (values 5 to 8 swap width and height). The raw sizes matched the files' own pixel sizes in 24 of 24 sampled files. Do **not** use `ZASSET.ZWIDTH` and `ZHEIGHT`: they are already turned by orientation, but they describe the edited version Photos shows, and the app shows originals (unedited, as [photo sources](../PHOTO_SOURCES.md#what-originals-contains) records).
 - **Checked on the TV in milestone 3:** photos with orientation 6 and 8 came out upright and correctly paired ([journal](../../journal/2026-10-18-1427-portrait-pairs-milestone-3-renderer.md)).
 

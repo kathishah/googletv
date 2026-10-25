@@ -9,7 +9,7 @@ Per-phase timings are logged under the `PhotoSource` tag as one line per refresh
 | First (full) | 900.7 s | database 138.4 s (1.28 GB, 9.2 MB/s) + WAL 713.9 s (6.37 GB, 8.9 MB/s) | prepare ~38 s (unlabelled at the time), first row 1.2 s, rows 4.4 s | catalog write 3.4 s |
 | Second (database reused, WAL resumed, 0 bytes fetched) | 48.6 s | none | about 37 s unlabelled, rows 4.4 s | catalog write 3.1 s |
 | Full path, 0 bytes fetched (after timers added) | 45.9 s | none | **prepare 37.4 s**, first row 0.5 s, rows 4.5 s | SMB session 1.0 s, catalog read 2.0 s, write 0.4 s |
-| After a CCC refresh, WAL grew by 60,699,960 bytes (database unchanged) | 50.6 s | WAL resumed at byte 6,370,653,032: 6.1 s at 9.9 MB/s, SMB session 7.1 s | prepare 37.9 s, first row 0.6 s, rows 4.5 s | catalog write 0.4 s; same 758 albums and 33,305 paths |
+| After a CCC refresh, WAL grew by 60,699,960 bytes (database unchanged) | 50.6 s | WAL resumed at byte 6,370,653,032: 6.1 s at 9.9 MB/s, SMB session 7.1 s | prepare 37.9 s, first row 0.6 s, rows 4.5 s | catalog write 0.4 s; same ~760 albums and 33,305 paths |
 | Unchanged shortcut (two taps) | 3.0 s each | none | none | SMB session 1.0 s, catalog read 2.0 s |
 | Catalog v2 rebuild, album query joined to the attributes table (first attempt) | 78.8 s | none | prepare 40.2 s, first row 5.0 s, **rows 26.6 s**, videos 1.5 s | catalog write 1.3 s |
 | Catalog v2 rebuild, album videos resolved from the library list | 51.1 s | none | prepare 39.7 s, first row 0.5 s, rows 4.6 s, videos 1.5 s | catalog write 0.6 s, SMB session 1.2 s, catalog read 2.8 s |

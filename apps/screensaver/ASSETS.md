@@ -1,6 +1,6 @@
 # Bundled artworks
 
-The app bundles three artworks as `drawable-nodpi` JPEGs (recorded 2026-10-16). They are the "Bundled samples" source and the fallback shown while SMB is failing.
+The app bundles three artworks as `drawable-nodpi` JPEGs (recorded 2026-10-16). They are the "Sample pics" source and the fallback shown while SMB is failing.
 
 **These images are not covered by the repository's MIT licence** (see [`LICENSE`](../../LICENSE)). Each is a reproduction of a very old two-dimensional painting. The table below records where each file came from and the status its Wikimedia Commons page showed when it was last checked (2026-10-24). Check the linked page before reusing an image elsewhere; the licence status of a photographic reproduction can differ by country.
 

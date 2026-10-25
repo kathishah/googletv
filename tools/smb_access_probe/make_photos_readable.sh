@@ -22,7 +22,7 @@
 # manifests hold private paths and stay on the Mac mini.
 # INCLUDE_VIDEOS=0 restricts a run to photos (the behavior before 2026-10-17). `revert` always undoes
 # every recorded path, photo or video.
-# LIVE, STATE_DIR, LOG, NO_LAUNCHCTL, INCLUDE_VIDEOS, and FAKE_ROOT can be overridden from the
+# LIVE_VOLUME, LIVE, STATE_DIR, LOG, NO_LAUNCHCTL, INCLUDE_VIDEOS, and FAKE_ROOT can be overridden from the
 # environment (for testing).
 
 set -u
@@ -42,7 +42,11 @@ fi
 USER_LOG="$HOME/photo-perms/photo-perms.log"
 CCC_LOG="/Library/Logs/make_photos_readable.log"
 
-: ${LIVE:="$(find /Volumes/Samsung_T5 -maxdepth 5 -type d -name 'Photos Library.photoslibrary' -prune -print 2>/dev/null | head -1)"}
+# LIVE_VOLUME is the mount point of the drive that holds the LIVE Photos library, for example
+# /Volumes/MyPhotosDrive. Set it in the environment, or edit the placeholder below in your own copy
+# (the root copy installed for CCC cannot see your shell environment). LIVE can be set directly instead.
+: ${LIVE_VOLUME:="/Volumes/YOUR_LIVE_DRIVE"}
+: ${LIVE:="$(find "$LIVE_VOLUME" -maxdepth 5 -type d -name 'Photos Library.photoslibrary' -prune -print 2>/dev/null | head -1)"}
 
 log() {
   mkdir -p "$STATE_DIR"
@@ -60,7 +64,7 @@ probe() {
 }
 diagnose() {
   echo "context: user=$(id -un) LIVE=${${LIVE:+set}:-unset}"
-  probe /Volumes/Samsung_T5 volume
+  probe "$LIVE_VOLUME" volume
   [ -n "$LIVE" ] && { probe "$LIVE" library; probe "$LIVE/originals" originals; }
 }
 need_live() {
@@ -79,7 +83,7 @@ PHOTO_EXTS=(jpg jpeg png webp heic heif)
 VIDEO_EXTS=(mov mp4 m4v 3gp 3g2 avi mpg mpeg mts m2ts)
 
 # NUL-separated list of supported photos (and, unless INCLUDE_VIDEOS=0, videos) that others cannot
-# read. As a normal user, only that user's files. As root (CCC), no owner filter: Samsung_T5 ignores
+# read. As a normal user, only that user's files. As root (CCC), no owner filter: the external volume ignores
 # ownership, so every file appears to belong to whoever looks at it.
 unreadable_media() {
   local owner_filter=() exts=("${PHOTO_EXTS[@]}") ext

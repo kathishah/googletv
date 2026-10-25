@@ -7,7 +7,7 @@ A dated development log: what was found or decided, and why, as it happened. Mos
 **Rules:**
 
 - One entry per unit of work or finding. Don't batch unrelated findings into one file.
-- Not edited after the fact. If an old entry turns out wrong, write a new entry saying so; the log stays an honest record of what was known at the time.
+- Not edited after the fact, with one exception: privacy edits. On 2026-10-24 identifying details were generalized across older entries before the repository was promoted: drive, album and local-path names became placeholders (`LIVE_VOLUME`, `<album A>`, `<repo>`, `$HOME`), exact library-wide totals became rounded figures (`~35,000`), and the TV's firmware and build strings were removed. Measurements and conclusions are unchanged. If an old entry turns out wrong, write a new entry saying so; the log stays an honest record of what was known at the time.
 - This is a log, not a spec. Durable decisions belong in `docs/` (for example `docs/PRODUCT.md`), which should link back here for the evidence. Dated device test results are entries here too; `docs/DEVICE_TESTING.md` keeps the runbook and the release checklist.
 - No photo filenames, host addresses, device identifiers or credentials, as everywhere else in the repository (see `AGENTS.md`).
 
