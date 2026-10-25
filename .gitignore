@@ -34,3 +34,20 @@ secrets.properties
 # Python diagnostics
 __pycache__/
 *.pyc
+
+# Private data and diagnostics output: never commit these
+*.log
+*.lst
+*.tsv
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.heic
+*.heif
+*.dng
+*.mov
+*.mp4
+photo-perms/
+photo-perm-trial/
+smb-debug/
+*.photoslibrary/
