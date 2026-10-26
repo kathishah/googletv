@@ -45,6 +45,7 @@ data class IntervalPreset(val seconds: Int, val label: String) {
 
 class SlideshowPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("slideshow", Context.MODE_PRIVATE)
+    private val smbCredentialStore = SmbCredentialStore(context)
 
     fun intervalSeconds(): Int = preferences.getInt(KEY_INTERVAL_SECONDS, IntervalPreset.default.seconds)
 
@@ -112,6 +113,12 @@ class SlideshowPreferences(context: Context) {
             .putString(KEY_SMB_SHARE, config.share.trim())
             .putString(KEY_SMB_PATH, config.rootPath.trim())
             .apply()
+    }
+
+    fun smbAuthentication(): com.googletv.screensaver.playback.SmbAuthentication = smbCredentialStore.authentication()
+
+    fun saveSmbAuthentication(authentication: com.googletv.screensaver.playback.SmbAuthentication) {
+        smbCredentialStore.save(authentication)
     }
 
     fun albumSelectionFor(sourceId: String): SavedAlbumSelection {

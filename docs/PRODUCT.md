@@ -23,21 +23,21 @@ For this phase, “album” means a regular user-created Photos album whose asse
 
 ## Settings
 
-The launcher settings are a compact two-column table: setting name at left and D-pad choices at right.
+The launcher settings are a compact table: setting name at left and D-pad choices at right. Type, Layout, and the Location + date label toggle share one row. Type and Layout use icon-only buttons with accessible names; the label control is a switch with a calendar and location-pin icon. Preview, Save, and Cancel are icon-only actions with accessible names.
 
 | Row | Choices | Notes |
 | --- | --- | --- |
 | Photo source | Sample pics, SMB share, SMB settings | SMB host, share name, and library path are edited on the separate SMB settings screen |
 | Media | **All** (default), Choose Albums | *All* shuffles a random sample of the library; *Choose Albums* opens the [album picker](#album-picker) |
-| Type | **Photos** (default), Photos + Videos, Videos | See [Type](#type) |
+| Type | **Photos** (default), Photos + Videos, Videos | Icon buttons; shares a row with Layout and Label. See [Type](#type) |
 | Pool | 100, 250, 500, 1,000 | Applies to *All* only; counts photos and videos together; disabled in *Choose Albums*; the screensaver fallback always uses 500 |
 | Interval | 10 secs, 30 secs, 1 min, 5 min, 15 min | Photos only; a video plays to its end (up to 60 s) and a pair stays up for one Interval |
-| Layout | **Single** (default), Portrait pairs | See [Layout](#layout) |
-| Label | Location + date, No label | Place names are best effort; GPS coordinates appear when Android cannot resolve one. Legacy Date-only values are unsupported and fall back to Location + date |
+| Layout | **Single** (default), Portrait pairs | Icon buttons; shares a row with Type and Label. See [Layout](#layout) |
+| Label | Location + date on/off | Calendar and pin icon with a switch; place names are best effort and GPS coordinates appear when Android cannot resolve one. Legacy Date-only values are unsupported and fall back to Location + date |
 
 ### Saving and the SMB screen
 
-Main-screen **Save** commits the settings draft and **Cancel** restores the last saved values. **SMB settings** opens a separate screen with the saved IP address, share name, and library path prefilled and editable. **Back** returns to the settings table with edits staged; the main-screen Save or Cancel commits or discards them.
+Main-screen **Save** commits the settings draft and **Cancel** restores the last saved values. **SMB settings** opens a separate screen with the saved server address, share name, and library path prefilled and editable. Sign-in defaults to explicit **Guest**; **Registered user** reveals username and password fields. The password is encrypted with a device-local Android Keystore key. **Test connection** checks read-only access and enumerates the configured library folder. **Back** returns to the settings table with edits staged; the main-screen Save or Cancel commits or discards them.
 
 ### Type
 

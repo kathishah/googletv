@@ -71,7 +71,7 @@ data class AlbumIndex(
 data class AlbumCatalogProgress(val message: String, val bytesCopied: Long? = null, val totalBytes: Long? = null)
 class AlbumIndexException(message: String) : IllegalStateException(message)
 
-/** Read-only SMB Guest source. No write-capable file handles are opened. */
+/** Read-only SMB photo source. No write-capable file handles are opened. */
 class SmbGuestPhotoSource(
     config: SmbSourceConfig,
     private val targetWidth: Int,
@@ -88,6 +88,7 @@ class SmbGuestPhotoSource(
     private val mediaType: MediaType = MediaType.PHOTOS,
     /** When true, the DreamService must use an app-refreshed catalog and never build one itself. */
     private val requireSavedCatalog: Boolean = false,
+    private val authentication: SmbAuthentication = SmbAuthentication(),
 ) : PhotoSource {
     private val validatedConfig = config.validated()
     private val sourceId = SmbSourceIdentity.forConfig(validatedConfig)
@@ -438,7 +439,7 @@ class SmbGuestPhotoSource(
      */
     override fun prepareVideo(slide: Slide): PreparedVideo {
         val item = slide.video ?: throw IllegalArgumentException("Not a video slide.")
-        val remote = SmbRemoteVideo.open(SmbSourceConfig(host, shareName, rootPath), item.path)
+        val remote = SmbRemoteVideo.open(SmbSourceConfig(host, shareName, rootPath), item.path, authentication)
         val reader = ProgressiveReader(remote, ProgressiveReader.newCacheFile(videoCacheDirectory), item.durationSeconds)
         try {
             reader.start()
@@ -633,7 +634,7 @@ class SmbGuestPhotoSource(
         try {
             connection = client.connect(host, SMB_PORT)
             phase = "authenticate"
-            session = connection.authenticate(AuthenticationContext.guest())
+            session = connection.authenticate(authentication.toAuthenticationContext())
             phase = "connectShare"
             val share = session.connectShare(shareName)
             if (share !is DiskShare) {

@@ -52,6 +52,7 @@ object PhotoSourceFactory {
                 selectedAlbumMode = !randomPhotos && preferences.photoSelectionMode() == PhotoSelectionMode.ALBUMS,
                 mediaType = if (forDream) MediaType.PHOTOS else preferences.mediaType(),
                 requireSavedCatalog = forDream,
+                authentication = preferences.smbAuthentication(),
             )
         }
     }

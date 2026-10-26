@@ -10,6 +10,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
@@ -19,13 +20,19 @@ import android.widget.ImageView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
+import android.widget.Toast
 import com.googletv.screensaver.playback.PhotoSourceFactory
 import com.googletv.screensaver.playback.PairingConfig
 import com.googletv.screensaver.playback.SlideshowPlayer
 import com.googletv.screensaver.playback.AlbumEntry
 import com.googletv.screensaver.playback.AlbumCatalogProgress
 import com.googletv.screensaver.playback.SmbGuestPhotoSource
+import com.googletv.screensaver.playback.SmbAuthMode
+import com.googletv.screensaver.playback.SmbAuthentication
+import com.googletv.screensaver.playback.SmbConnectionTester
 import com.googletv.screensaver.playback.SmbSourceIdentity
 import com.googletv.screensaver.playback.validated
 import java.util.concurrent.Executors
@@ -37,12 +44,22 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
+private enum class TvIcon { PHOTO, VIDEO, PHOTO_VIDEO, SINGLE, PAIRS, PREVIEW, SAVE, CANCEL }
+
 class MainActivity : Activity() {
     private lateinit var preferences: SlideshowPreferences
     private lateinit var settingsTable: LinearLayout
     private lateinit var settingsScreen: View
     private lateinit var smbSettingsScreen: View
     private lateinit var smbFields: List<EditText>
+    private lateinit var smbUsernameField: EditText
+    private lateinit var smbPasswordField: EditText
+    private lateinit var smbCredentialContainer: LinearLayout
+    private lateinit var smbAuthButtons: List<RadioButton>
+    private lateinit var smbTestButton: Button
+    private lateinit var smbTestStatus: TextView
+    private var labelsToggle: LabelToggleView? = null
+    private lateinit var smbSaveButton: Button
     private lateinit var smbMessage: TextView
     private lateinit var albumSummary: TextView
     private lateinit var albumError: TextView
@@ -66,6 +83,7 @@ class MainActivity : Activity() {
     private var draftSmbConfig = com.googletv.screensaver.playback.SmbSourceConfig(
         "", SlideshowPreferences.DEFAULT_SMB_SHARE, SlideshowPreferences.DEFAULT_SMB_PATH,
     )
+    private var draftSmbAuthentication = SmbAuthentication()
     private var player: SlideshowPlayer? = null
     private var pickerOpen = false
     private var smbSettingsOpen = false
@@ -146,8 +164,10 @@ class MainActivity : Activity() {
         outState.putString(STATE_SMB_HOST, draftSmbConfig.host)
         outState.putString(STATE_SMB_SHARE, draftSmbConfig.share)
         outState.putString(STATE_SMB_PATH, draftSmbConfig.rootPath)
+        outState.putString(STATE_SMB_AUTH_MODE, draftSmbAuthentication.mode.name)
+        outState.putString(STATE_SMB_USERNAME, draftSmbAuthentication.username)
         outState.putString(STATE_FOCUS_TAG, if (player != null) previewReturnFocusTag else currentFocus?.tag as? String)
-        outState.putInt(STATE_SMB_FOCUS, smbFields.indexOf(currentFocus).coerceAtLeast(0))
+        outState.putInt(STATE_SMB_FOCUS, listOf(smbFields[0], smbFields[1], smbFields[2], smbUsernameField, smbPasswordField).indexOf(currentFocus).coerceAtLeast(0))
         outState.putInt(STATE_PICKER_INDEX, pickerFocusedIndex ?: 0)
         outState.putInt(STATE_PICKER_SCROLL, pickerHorizontalScroll?.scrollX ?: pickerScrollPosition)
         super.onSaveInstanceState(outState)
@@ -166,6 +186,10 @@ class MainActivity : Activity() {
             host = state.getString(STATE_SMB_HOST, draftSmbConfig.host),
             share = state.getString(STATE_SMB_SHARE, draftSmbConfig.share),
             rootPath = state.getString(STATE_SMB_PATH, draftSmbConfig.rootPath),
+        )
+        draftSmbAuthentication = draftSmbAuthentication.copy(
+            mode = enumOrDefault(state.getString(STATE_SMB_AUTH_MODE), draftSmbAuthentication.mode),
+            username = state.getString(STATE_SMB_USERNAME, draftSmbAuthentication.username),
         )
         val sourceId = runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()
         if (sourceId != selectedAlbumSourceId) {
@@ -187,7 +211,7 @@ class MainActivity : Activity() {
     }
 
     private fun restoreSmbFieldFocus(index: Int) {
-        val fields = smbFields
+        val fields = listOf(smbFields[0], smbFields[1], smbFields[2], smbUsernameField, smbPasswordField)
         fields.getOrNull(index.coerceIn(fields.indices))?.post { fields[index.coerceIn(fields.indices)].requestFocus() }
     }
 
@@ -288,12 +312,12 @@ class MainActivity : Activity() {
         }
         root.addView(settingsStatus)
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
-        actions.addView(button("Preview") { saveDraftAndPreview() }.apply { tag = "action:preview" }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
-        actions.addView(button("Save") { saveDraftWithCatalogCheck() }.apply {
+        actions.addView(iconButton(TvIcon.PREVIEW, "Preview slideshow") { saveDraftAndPreview() }.apply { tag = "action:preview" }, LinearLayout.LayoutParams(dp(68), dp(48)).apply { marginStart = dp(8) })
+        actions.addView(iconButton(TvIcon.SAVE, "Save settings") { saveDraftWithCatalogCheck() }.apply {
             tag = "action:save"
             setBackgroundTintList(ColorStateList.valueOf(SELECTED_COLOR))
-        }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
-        actions.addView(button("Cancel") { cancelDraft() }.apply { tag = "action:cancel" }, LinearLayout.LayoutParams(dp(128), dp(48)).apply { marginStart = dp(8) })
+        }, LinearLayout.LayoutParams(dp(68), dp(48)).apply { marginStart = dp(8) })
+        actions.addView(iconButton(TvIcon.CANCEL, "Cancel changes") { cancelDraft() }.apply { tag = "action:cancel" }, LinearLayout.LayoutParams(dp(68), dp(48)).apply { marginStart = dp(8) })
         root.addView(actions)
         renderSettingsTable()
         scroll.addView(root, android.view.ViewGroup.LayoutParams(-1, -2))
@@ -303,38 +327,159 @@ class MainActivity : Activity() {
     private fun buildSmbSettingsScreen(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(96), dp(48), dp(96), dp(48))
+            setPadding(dp(48), dp(30), dp(48), dp(24))
             setBackgroundColor(Color.rgb(16, 24, 33))
         }
-        root.addView(text("SMB settings", 32f, true))
-        root.addView(text("Photos share connection", 20f, false).apply {
+        val topbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        topbar.addView(text(getString(R.string.app_name), 15f, true).apply { setTextColor(Color.rgb(150, 199, 236)) }, LinearLayout.LayoutParams(0, -2, 1f))
+        topbar.addView(text("PHOTO SOURCE", 12f, false).apply { setTextColor(Color.rgb(170, 184, 199)) })
+        root.addView(topbar)
+        root.addView(text("SMB settings", 27f, true).apply { setPadding(0, dp(12), 0, 0) })
+        root.addView(text("Read-only connection to your Photos share.", 13f, false).apply {
             setTextColor(Color.rgb(190, 204, 218))
-            setPadding(0, dp(8), 0, dp(24))
+            setPadding(0, dp(3), 0, dp(12))
         })
-        val host = input(getString(R.string.smb_host_hint), draftSmbConfig.host)
-        val share = input(getString(R.string.smb_share_hint), draftSmbConfig.share)
-        val path = input(getString(R.string.smb_path_hint), draftSmbConfig.rootPath)
+
+        val content = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
+        val fieldsColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val rightColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(fieldsColumn, LinearLayout.LayoutParams(0, -1, 1.05f).apply { marginEnd = dp(24) })
+        content.addView(rightColumn, LinearLayout.LayoutParams(0, -1, .95f))
+
+        fun smbFieldBackground(focused: Boolean) = android.graphics.drawable.GradientDrawable().apply {
+            setColor(if (focused) Color.rgb(24, 43, 59) else Color.rgb(17, 27, 37))
+            cornerRadius = dp(6).toFloat()
+            setStroke(dp(if (focused) 2 else 1), if (focused) Color.rgb(128, 198, 255) else Color.rgb(69, 86, 104))
+        }
+        fun smbInput(hint: String, value: String) = input(hint, value).apply {
+            textSize = 12f
+            setPadding(dp(10), 0, dp(10), 0)
+            background = smbFieldBackground(false)
+            setOnFocusChangeListener { field, focused -> field.background = smbFieldBackground(focused) }
+        }
+        val host = smbInput(getString(R.string.smb_host_hint), draftSmbConfig.host)
+        val share = smbInput(getString(R.string.smb_share_hint), draftSmbConfig.share)
+        val path = smbInput(getString(R.string.smb_path_hint), draftSmbConfig.rootPath)
         smbFields = listOf(host, share, path)
-        listOf("IP address", "Share name", "Library path").zip(smbFields).forEach { (label, field) ->
-            root.addView(text(label, 16f, true).apply {
-                setPadding(0, dp(8), 0, dp(5))
+        listOf("Server address" to host, "Share name" to share, "Library folder" to path).forEach { (label, field) ->
+            fieldsColumn.addView(text(label, 11f, true).apply {
                 labelFor = field.id
                 isAccessibilityHeading = true
+                setPadding(0, dp(4), 0, dp(3))
             })
-            root.addView(field, LinearLayout.LayoutParams(-1, dp(54)))
+            fieldsColumn.addView(field, LinearLayout.LayoutParams(-1, dp(36)).apply { bottomMargin = dp(7) })
         }
-        root.addView(text(getString(R.string.smb_source_note), 14f, false).apply {
+        fieldsColumn.addView(text("Only folders inside this share can be browsed. Access is read-only.", 12f, false).apply {
             setTextColor(Color.rgb(170, 184, 199))
-            setPadding(0, dp(14), 0, dp(18))
+            setPadding(0, dp(3), dp(16), 0)
         })
-        root.addView(button("Back") {
+
+        val authCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = roundedBackground(Color.rgb(18, 28, 38), Color.rgb(59, 76, 92), 9)
+        }
+        authCard.addView(text("Sign in as", 12f, true).apply { setPadding(0, 0, 0, dp(4)) })
+        val authChoices = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+            setPadding(dp(4), 0, dp(4), 0)
+        }
+        fun authChoice(title: String, mode: SmbAuthMode) = RadioButton(this).apply {
+            text = title
+            textSize = 12f
+            isAllCaps = false
+            minHeight = dp(40)
+            setPadding(dp(10), 0, dp(8), 0)
+            buttonTintList = null
+            buttonDrawable = android.graphics.drawable.InsetDrawable(smbRadioIndicator(), dp(8), 0, 0, 0)
+            background = roundedBackground(Color.rgb(23, 35, 47), Color.rgb(50, 72, 90), 6)
+            setOnFocusChangeListener { focusedView, focused ->
+                focusedView.foreground = if (focused) focusOutline() else null
+            }
+            setOnClickListener { selectSmbAuth(mode) }
+        }
+        val guest = authChoice("Guest · default", SmbAuthMode.GUEST)
+        val registered = authChoice("Registered user", SmbAuthMode.REGISTERED)
+        authChoices.addView(guest, RadioGroup.LayoutParams(-1, dp(40)).apply {
+            marginStart = dp(8); marginEnd = dp(8); bottomMargin = dp(6)
+        })
+        authChoices.addView(registered, RadioGroup.LayoutParams(-1, dp(40)).apply {
+            marginStart = dp(8); marginEnd = dp(8)
+        })
+        smbAuthButtons = listOf(guest, registered)
+        authCard.addView(authChoices)
+        smbCredentialContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val username = smbInput("Username", draftSmbAuthentication.username).apply {
+            textSize = 12f
+        }
+        val password = smbInput("Password", draftSmbAuthentication.password).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            textSize = 12f
+        }
+        smbUsernameField = username
+        smbPasswordField = password
+        listOf("Username" to username, "Password" to password).forEach { (label, field) ->
+            smbCredentialContainer.addView(text(label, 10f, true).apply { setPadding(0, dp(5), 0, dp(2)) })
+            smbCredentialContainer.addView(field, LinearLayout.LayoutParams(-1, dp(36)).apply { bottomMargin = dp(4) })
+        }
+        authCard.addView(smbCredentialContainer)
+        rightColumn.addView(authCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+
+        val connectionCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            background = roundedBackground(Color.rgb(18, 28, 38), Color.rgb(48, 67, 85), 10)
+        }
+        connectionCard.addView(text("⌁", 23f, false), LinearLayout.LayoutParams(dp(30), dp(30)).apply { bottomMargin = dp(5) })
+        connectionCard.addView(text("Test connection", 17f, true))
+        connectionCard.addView(text("Check that the server, share, folder, and selected sign-in method work.", 11f, false).apply {
+            setTextColor(Color.rgb(170, 184, 199))
+            setPadding(0, dp(4), 0, dp(9))
+        })
+        smbTestButton = button("Test connection") { testSmbConnection() }.apply {
+            tag = "smb:test"
+            textSize = 12f
+            minHeight = dp(40)
+            setPadding(dp(14), 0, dp(14), 0)
+            setBackgroundTintList(ColorStateList.valueOf(SELECTED_COLOR))
+        }
+        connectionCard.addView(smbTestButton, LinearLayout.LayoutParams(-1, dp(40)))
+        smbTestStatus = text("", 10f, false).apply {
+            setTextColor(Color.rgb(156, 219, 180))
+            setPadding(0, dp(8), 0, 0)
+            visibility = View.GONE
+        }
+        connectionCard.addView(smbTestStatus)
+        rightColumn.addView(connectionCard, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
+        val footer = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        footer.addView(text("Guest access is selected by default.", 10f, false).apply {
+            setTextColor(Color.rgb(170, 184, 199))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        val backButton = button("Back") {
             saveSmbDraftFromFields()
             smbSettingsOpen = false
             setContentView(settingsScreen)
             focusChoice("source", if (sourceMode == PhotoSourceMode.SMB_GUEST) 1 else 0)
-        }.apply { tag = "smb:back" }, LinearLayout.LayoutParams(dp(180), dp(58)))
-        return root
+        }.apply { tag = "smb:back"; textSize = 12f; minHeight = dp(38) }
+        footer.addView(backButton, LinearLayout.LayoutParams(dp(104), dp(42)).apply { marginStart = dp(8) })
+        smbSaveButton = button("✓  Save") { saveSmbSettings() }.apply {
+            tag = "smb:save"
+            textSize = 12f
+            minHeight = dp(38)
+            setBackgroundTintList(ColorStateList.valueOf(SELECTED_COLOR))
+        }
+        footer.addView(smbSaveButton, LinearLayout.LayoutParams(dp(122), dp(42)).apply { marginStart = dp(8) })
+        root.addView(footer, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8) })
+        selectSmbAuth(draftSmbAuthentication.mode)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+        }
+        scroll.addView(root, android.view.ViewGroup.LayoutParams(-1, -1))
+        return scroll
     }
 
     private fun renderSettingsTable() {
@@ -359,10 +504,7 @@ class MainActivity : Activity() {
             setPadding(dp(8), 0, 0, 0)
         }
         photos.second.addView(albumSummary)
-        addChoiceRow("Type", "type", MediaType.all.map { type -> type.label to {
-            mediaType = type
-            refreshSettingsControls()
-        } })
+        addTypeLayoutLabelsRow()
         addChoiceRow("Pool", "pool", PhotoPoolSize.all.map { it.label to {
             poolSize = it
             refreshSettingsControls()
@@ -377,20 +519,66 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         settingsTable.addView(intervalNote, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
-        val layout = addChoiceRow("Layout", "layout", LayoutMode.all.map { mode -> mode.label to {
-            layoutMode = mode
-            refreshSettingsControls()
-        } })
         layoutNote = text(LAYOUT_NOTE, 12f, false).apply {
             setTextColor(Color.rgb(170, 184, 199))
             setPadding(dp(8), 0, 0, 0)
         }
-        layout.second.addView(layoutNote)
-        addChoiceRow("Label", "label", listOf(
-            "Location + date" to { labelMode = PhotoLabelMode.LOCATION_AND_DATE; refreshSettingsControls() },
-            "None" to { labelMode = PhotoLabelMode.NONE; refreshSettingsControls() },
-        ))
+        settingsTable.addView(layoutNote, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
         refreshSettingsControls()
+    }
+
+    private fun addTypeLayoutLabelsRow() {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.rgb(23, 35, 47))
+            setPadding(dp(12), dp(3), dp(8), dp(3))
+            background = roundedBackground(Color.rgb(23, 35, 47), Color.rgb(23, 35, 47), 8)
+        }
+        fun group(title: String): Pair<LinearLayout, LinearLayout> {
+            val cell = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(4), dp(6), dp(4))
+                background = roundedBackground(Color.rgb(18, 28, 38), Color.rgb(59, 76, 92), 7)
+            }
+            cell.addView(text(title, 15f, true).apply { isAccessibilityHeading = true }, LinearLayout.LayoutParams(dp(62), -2))
+            val options = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            cell.addView(options, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(cell, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8) })
+            return cell to options
+        }
+        val (_, typeOptions) = group("Type")
+        val typeButtons = MediaType.all.map { type ->
+            val icon = when (type) { MediaType.PHOTOS -> TvIcon.PHOTO; MediaType.VIDEOS -> TvIcon.VIDEO; MediaType.PHOTOS_AND_VIDEOS -> TvIcon.PHOTO_VIDEO }
+            iconButton(icon, type.label) { mediaType = type; refreshSettingsControls() }.apply {
+                tag = "type:${type.name}"
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) }
+            }.also(typeOptions::addView)
+        }
+        choiceButtons["type"] = typeButtons
+
+        val (_, layoutOptions) = group("Layout")
+        val layoutButtons = LayoutMode.all.mapIndexed { index, mode ->
+            val icon = if (index == 0) TvIcon.SINGLE else TvIcon.PAIRS
+            iconButton(icon, mode.label) { layoutMode = mode; refreshSettingsControls() }.apply {
+                tag = "layout:${mode.name}"
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(5) }
+            }.also(layoutOptions::addView)
+        }
+        choiceButtons["layout"] = layoutButtons
+
+        val (_, labelOptions) = group("Labels")
+        labelsToggle = LabelToggleView().apply {
+            tag = "labels:toggle"
+            setOnClickListener {
+                labelMode = if (labelMode == PhotoLabelMode.LOCATION_AND_DATE) PhotoLabelMode.NONE else PhotoLabelMode.LOCATION_AND_DATE
+                refreshSettingsControls()
+            }
+        }
+        labelOptions.addView(labelsToggle, LinearLayout.LayoutParams(dp(108), dp(40)))
+        row.tag = "settings:type-layout-labels"
+        settingsTable.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) })
     }
 
     private fun addChoiceRow(
@@ -446,7 +634,7 @@ class MainActivity : Activity() {
         mark("pool", PhotoPoolSize.all.indexOf(poolSize).coerceAtLeast(0))
         mark("interval", IntervalPreset.all.indexOfFirst { it.seconds == intervalPreset.seconds }.coerceAtLeast(0))
         mark("layout", LayoutMode.all.indexOf(layoutMode).coerceAtLeast(0))
-        mark("label", if (labelMode == PhotoLabelMode.NONE) 1 else 0)
+        labelsToggle?.setChecked(labelMode == PhotoLabelMode.LOCATION_AND_DATE)
         choiceButtons["pool"].orEmpty().forEach { it.isEnabled = selectionMode == PhotoSelectionMode.ALL }
         albumSummary.text = if (selectionMode == PhotoSelectionMode.ALBUMS) {
             MediaTypeRules.summaryText(mediaType, selectedAlbumIds.size, selectedAlbumPhotoCount, selectedAlbumVideoCount)
@@ -473,6 +661,7 @@ class MainActivity : Activity() {
         layoutMode = preferences.layoutMode()
         labelMode = preferences.photoLabelMode()
         draftSmbConfig = preferences.smbSourceConfig()
+        draftSmbAuthentication = preferences.smbAuthentication()
         val sourceId = runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()
         val selection = sourceId?.let(preferences::albumSelectionFor)
         selectedAlbumSourceId = sourceId
@@ -488,13 +677,99 @@ class MainActivity : Activity() {
                 share = smbFields[1].text.toString().trim(),
                 rootPath = smbFields[2].text.toString().trim(),
             )
+            draftSmbAuthentication = SmbAuthentication(
+                mode = draftSmbAuthentication.mode,
+                username = if (::smbUsernameField.isInitialized) smbUsernameField.text.toString() else draftSmbAuthentication.username,
+                password = if (::smbPasswordField.isInitialized) smbPasswordField.text.toString() else draftSmbAuthentication.password,
+            )
+        }
+    }
+
+    private fun selectSmbAuth(mode: SmbAuthMode) {
+        draftSmbAuthentication = draftSmbAuthentication.copy(mode = mode)
+        if (!::smbAuthButtons.isInitialized) return
+        smbAuthButtons.forEachIndexed { index, choice ->
+            val selected = index == if (mode == SmbAuthMode.GUEST) 0 else 1
+            choice.isChecked = selected
+            choice.background = roundedBackground(
+                if (selected) Color.rgb(40, 100, 148) else Color.rgb(23, 35, 47),
+                if (selected) Color.rgb(128, 198, 255) else Color.rgb(50, 72, 90), 6,
+            )
+            choice.stateDescription = if (selected) "Selected" else "Not selected"
+        }
+        val registered = mode == SmbAuthMode.REGISTERED
+        smbCredentialContainer.visibility = if (registered) View.VISIBLE else View.GONE
+    }
+
+    private fun saveSmbSettings() {
+        saveSmbDraftFromFields()
+        runCatching {
+            val config = draftSmbConfig.validated()
+            val authentication = draftSmbAuthentication.validated()
+            val sourceId = SmbSourceIdentity.forConfig(config)
+            preferences.saveSmbSourceConfig(config)
+            preferences.saveSmbAuthentication(authentication)
+            if (selectedAlbumSourceId != sourceId) {
+                selectedAlbumIds = emptySet()
+                selectedAlbumPhotoCount = 0
+                selectedAlbumVideoCount = 0
+                selectedAlbumSourceId = sourceId
+            }
+            draftSmbConfig = config
+            draftSmbAuthentication = authentication
+        }.onSuccess {
+            Toast.makeText(this, "SMB settings saved.", Toast.LENGTH_SHORT).show()
+        }.onFailure { error ->
+            smbTestStatus.text = error.message ?: getString(R.string.smb_config_error)
+            smbTestStatus.setTextColor(Color.rgb(255, 190, 130))
+            smbTestStatus.visibility = View.VISIBLE
+        }
+    }
+
+    private fun testSmbConnection() {
+        saveSmbDraftFromFields()
+        val config = runCatching { draftSmbConfig.validated() }.getOrElse { error ->
+            smbTestStatus.text = error.message ?: getString(R.string.smb_config_error)
+            smbTestStatus.setTextColor(Color.rgb(255, 190, 130))
+            smbTestStatus.visibility = View.VISIBLE
+            return
+        }
+        val authentication = runCatching { draftSmbAuthentication.validated() }.getOrElse { error ->
+            smbTestStatus.text = error.message ?: "Check the registered sign-in details."
+            smbTestStatus.setTextColor(Color.rgb(255, 190, 130))
+            smbTestStatus.visibility = View.VISIBLE
+            return
+        }
+        smbTestButton.isEnabled = false
+        smbTestStatus.text = "Testing read-only access…"
+        smbTestStatus.setTextColor(Color.rgb(170, 184, 199))
+        smbTestStatus.visibility = View.VISIBLE
+        albumExecutor.execute {
+            val result = runCatching { SmbConnectionTester.test(config, authentication) }
+            runOnUiThread {
+                smbTestButton.isEnabled = true
+                if (result.isSuccess) {
+                    smbTestStatus.text = "✓ Connected · folder is readable"
+                    smbTestStatus.setTextColor(Color.rgb(156, 219, 180))
+                } else {
+                    val failure = result.exceptionOrNull()
+                    smbTestStatus.text = when (failure) {
+                        is IllegalArgumentException, is IllegalStateException -> failure.message ?: "Connection failed."
+                        else -> "Connection failed. Check the server, share, folder, and sign-in details."
+                    }
+                    smbTestStatus.setTextColor(Color.rgb(255, 190, 130))
+                }
+            }
         }
     }
 
     private fun saveDraft(): Boolean {
         saveSmbDraftFromFields()
         return runCatching {
-            if (sourceMode == PhotoSourceMode.SMB_GUEST) draftSmbConfig.validated()
+            if (sourceMode == PhotoSourceMode.SMB_GUEST) {
+                draftSmbConfig.validated()
+                draftSmbAuthentication.validated()
+            }
             preferences.setPhotoSourceMode(sourceMode)
             preferences.setPhotoSelectionMode(selectionMode)
             preferences.setMediaType(mediaType)
@@ -503,6 +778,7 @@ class MainActivity : Activity() {
             preferences.setLayoutMode(layoutMode)
             preferences.setPhotoLabelMode(labelMode)
             preferences.saveSmbSourceConfig(draftSmbConfig)
+            preferences.saveSmbAuthentication(draftSmbAuthentication)
             runCatching { SmbSourceIdentity.forConfig(draftSmbConfig) }.getOrNull()?.let { sourceId ->
                 if (selectedAlbumSourceId != sourceId) {
                     selectedAlbumIds = emptySet()
@@ -514,7 +790,6 @@ class MainActivity : Activity() {
             }
             // A trace for the log (no private values) so an unexpected change in settings can be dated.
             android.util.Log.i("Settings", "Saved: Type=$mediaType, Layout=$layoutMode, Media=$selectionMode, source=$sourceMode, ${selectedAlbumIds.size} albums")
-            settingsStatus.text = "Settings saved."
             true
         }.getOrElse {
             smbMessage.text = it.message ?: getString(R.string.smb_config_error)
@@ -528,6 +803,9 @@ class MainActivity : Activity() {
         smbFields.forEachIndexed { index, field ->
             field.setText(listOf(draftSmbConfig.host, draftSmbConfig.share, draftSmbConfig.rootPath)[index])
         }
+        if (::smbUsernameField.isInitialized) smbUsernameField.setText(draftSmbAuthentication.username)
+        if (::smbPasswordField.isInitialized) smbPasswordField.setText(draftSmbAuthentication.password)
+        if (::smbAuthButtons.isInitialized) selectSmbAuth(draftSmbAuthentication.mode)
         albumError.visibility = View.GONE
         smbMessage.visibility = View.GONE
         settingsStatus.text = "Changes discarded."
@@ -543,7 +821,9 @@ class MainActivity : Activity() {
 
     private fun saveDraftWithCatalogCheck(preview: Boolean = false) {
         if (!needsVideoCatalogCheck()) {
-            if (saveDraft() && preview) enterPreview()
+            if (saveDraft()) {
+                if (preview) enterPreview() else Toast.makeText(this, "Settings saved.", Toast.LENGTH_SHORT).show()
+            }
             return
         }
         checkVideoCatalog(preview)
@@ -582,6 +862,7 @@ class MainActivity : Activity() {
                 val source = SmbGuestPhotoSource(
                     config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
                     catalogCacheDirectory = filesDir,
+                    authentication = draftSmbAuthentication,
                 )
                 val registered = synchronized(catalogSourceLock) {
                     if (isFinishing || token != videoCatalogGateToken) false
@@ -622,7 +903,9 @@ class MainActivity : Activity() {
                 result.fold(
                     {
                         setContentView(settingsScreen)
-                        if (saveDraft() && preview) enterPreview()
+                        if (saveDraft()) {
+                            if (preview) enterPreview() else Toast.makeText(this@MainActivity, "Settings saved.", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     { error ->
                         val message = if (error is com.googletv.screensaver.playback.AlbumIndexException) {
@@ -749,6 +1032,7 @@ class MainActivity : Activity() {
                 val source = SmbGuestPhotoSource(
                     config, 640, 360, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
                     catalogCacheDirectory = filesDir,
+                    authentication = draftSmbAuthentication,
                 )
                 val registered = synchronized(catalogSourceLock) {
                     if (isFinishing || !pickerOpen || token != catalogLoadToken) false
@@ -843,7 +1127,10 @@ class MainActivity : Activity() {
 
     private fun showAlbumPicker(albums: List<AlbumEntry>, sourceModifiedMillis: Long? = null) {
         albumCoverCacheDirectory().mkdirs()
-        albumCoverSource = SmbGuestPhotoSource(draftSmbConfig, 480, 300, labelMode = labelMode, fallbackCacheDirectory = cacheDir)
+        albumCoverSource = SmbGuestPhotoSource(
+            draftSmbConfig, 480, 300, labelMode = labelMode, fallbackCacheDirectory = cacheDir,
+            authentication = draftSmbAuthentication,
+        )
         val staged = selectedAlbumIds.toMutableSet()
         var sortName = false
         val availableIds = albums.map { it.id }.toSet()
@@ -1211,7 +1498,9 @@ class MainActivity : Activity() {
                 bitmap = if (usePoster) {
                     posterCandidates.firstNotNullOfOrNull { video ->
                         if (!pickerOpen || pickerToken != catalogLoadToken || albumCoverSource !== source) return@firstNotNullOfOrNull null
-                        com.googletv.screensaver.playback.VideoPoster.load(config, video, File(cacheDir, "video-cache"), 480, 300)
+                        com.googletv.screensaver.playback.VideoPoster.load(
+                            config, video, File(cacheDir, "video-cache"), 480, 300, draftSmbAuthentication,
+                        )
                     }
                 } else album.paths.take(4).firstNotNullOfOrNull { relativePath ->
                     if (!pickerOpen || pickerToken != catalogLoadToken || albumCoverSource !== source) return@firstNotNullOfOrNull null
@@ -1379,6 +1668,174 @@ class MainActivity : Activity() {
         setOnClickListener { onClick() }
     }
 
+    private fun iconButton(icon: TvIcon, accessibleName: String, onClick: () -> Unit) = SettingsIconButton(icon, accessibleName, onClick)
+
+    private inner class SettingsIconButton(
+        private val icon: TvIcon,
+        accessibleName: String,
+        onClick: () -> Unit,
+    ) : Button(this@MainActivity) {
+        private val stroke = iconPaint()
+        private val solid = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(225, 235, 244)
+            style = android.graphics.Paint.Style.FILL
+        }
+
+        init {
+            text = ""
+            contentDescription = accessibleName
+            isAllCaps = false
+            minHeight = dp(44)
+            minWidth = dp(44)
+            setPadding(dp(3), 0, dp(3), 0)
+            setOnFocusChangeListener { focusedView, focused -> focusedView.foreground = if (focused) focusOutline() else null }
+            setOnClickListener { onClick() }
+        }
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val size = dp(24).toFloat()
+            canvas.save()
+            canvas.translate((width - size) / 2f, (height - size) / 2f)
+            canvas.scale(size / 24f, size / 24f)
+            drawSettingsIcon(canvas, icon, stroke, solid)
+            canvas.restore()
+        }
+    }
+
+    private inner class LabelToggleView : View(this@MainActivity) {
+        private var checked = labelMode == PhotoLabelMode.LOCATION_AND_DATE
+        private val stroke = iconPaint()
+        private val solid = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = android.graphics.Paint.Style.FILL }
+        private val track = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { style = android.graphics.Paint.Style.FILL }
+        private val trackEdge = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { style = android.graphics.Paint.Style.STROKE; strokeWidth = dp(1).toFloat() }
+        private val shape = android.graphics.drawable.GradientDrawable()
+
+        init {
+            isFocusable = true
+            isClickable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setOnFocusChangeListener { focusedView, focused -> focusedView.foreground = if (focused) focusOutline() else null }
+            updateSemantics()
+        }
+
+        fun setChecked(value: Boolean) {
+            if (checked == value) return
+            checked = value
+            updateSemantics()
+            invalidate()
+        }
+
+        private fun updateSemantics() {
+            contentDescription = if (checked) "Photo labels on: location and date" else "Photo labels off"
+            stateDescription = if (checked) "On" else "Off"
+            shape.setColor(if (checked) Color.rgb(24, 54, 80) else Color.rgb(32, 45, 58))
+            shape.cornerRadius = dp(6).toFloat()
+            shape.setStroke(dp(1), if (checked) Color.rgb(128, 198, 255) else Color.rgb(69, 89, 108))
+            background = shape
+        }
+
+        override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(info)
+            info.className = "android.widget.Switch"
+            info.isCheckable = true
+            info.isChecked = checked
+        }
+
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val iconWidth = dp(27).toFloat()
+            val iconHeight = dp(22).toFloat()
+            canvas.save()
+            canvas.translate(dp(10).toFloat(), (height - iconHeight) / 2f)
+            canvas.scale(iconWidth / 32f, iconHeight / 24f)
+            drawLabelIcons(canvas, stroke)
+            canvas.restore()
+            val trackWidth = dp(32).toFloat()
+            val trackHeight = dp(18).toFloat()
+            val left = width - dp(10).toFloat() - trackWidth
+            val top = (height - trackHeight) / 2f
+            track.color = if (checked) Color.rgb(52, 125, 181) else Color.rgb(52, 70, 86)
+            trackEdge.color = if (checked) Color.rgb(167, 215, 255) else Color.rgb(101, 121, 139)
+            val bounds = android.graphics.RectF(left, top, left + trackWidth, top + trackHeight)
+            canvas.drawRoundRect(bounds, trackHeight / 2, trackHeight / 2, track)
+            canvas.drawRoundRect(bounds, trackHeight / 2, trackHeight / 2, trackEdge)
+            val knobX = if (checked) left + trackWidth - dp(8).toFloat() else left + dp(8).toFloat()
+            canvas.drawCircle(knobX, height / 2f, dp(6).toFloat(), solid)
+        }
+    }
+
+    private fun iconPaint() = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(225, 235, 244)
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 1.8f
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+    }
+
+    private fun drawLabelIcons(canvas: android.graphics.Canvas, paint: android.graphics.Paint) {
+        canvas.drawRoundRect(android.graphics.RectF(1.5f, 3f, 17.5f, 21f), 2f, 2f, paint)
+        canvas.drawLine(5.5f, 1.8f, 5.5f, 4.8f, paint)
+        canvas.drawLine(13.5f, 1.8f, 13.5f, 4.8f, paint)
+        canvas.drawLine(1.5f, 8f, 17.5f, 8f, paint)
+        canvas.drawLine(5f, 12f, 11f, 12f, paint)
+        canvas.drawLine(5f, 16f, 8f, 16f, paint)
+        val pin = android.graphics.Path().apply {
+            moveTo(28f, 8.5f); cubicTo(28f, 11.9f, 23.5f, 16.5f, 23.5f, 16.5f)
+            cubicTo(23.5f, 16.5f, 19f, 11.9f, 19f, 8.5f); cubicTo(19f, 2.5f, 28f, 2.5f, 28f, 8.5f)
+        }
+        canvas.drawPath(pin, paint)
+        canvas.drawCircle(23.5f, 8.5f, 1.2f, paint)
+    }
+
+    private fun drawSettingsIcon(canvas: android.graphics.Canvas, icon: TvIcon, paint: android.graphics.Paint, fill: android.graphics.Paint) {
+        fun photo(left: Float, right: Float) {
+            canvas.drawRoundRect(android.graphics.RectF(left, 4f, right, 20f), 2f, 2f, paint)
+            canvas.drawCircle(left + 5.5f, 9f, 1.5f, paint)
+            canvas.drawPath(android.graphics.Path().apply {
+                moveTo(left + 1f, 17f); lineTo(left + 5f, 13f); lineTo(left + 8f, 16f)
+                lineTo(left + 11f, 12f); lineTo(right - 1f, 18f)
+            }, paint)
+        }
+        fun video(left: Float, top: Float, width: Float, height: Float) {
+            canvas.drawRoundRect(android.graphics.RectF(left, top, left + width, top + height), 2f, 2f, paint)
+            canvas.drawPath(android.graphics.Path().apply {
+                moveTo(left + width, top + 5f); lineTo(left + width + 5f, top + 2f)
+                lineTo(left + width + 5f, top + height - 2f); lineTo(left + width, top + height - 5f); close()
+            }, paint)
+            canvas.drawPath(android.graphics.Path().apply {
+                moveTo(left + 5f, top + 4f); lineTo(left + 10f, top + height / 2f)
+                lineTo(left + 5f, top + height - 4f); close()
+            }, fill)
+        }
+        when (icon) {
+            TvIcon.PHOTO -> photo(3f, 21f)
+            TvIcon.VIDEO -> video(3f, 5f, 13f, 14f)
+            TvIcon.PHOTO_VIDEO -> { photo(2.5f, 16.5f); video(16f, 9f, 5f, 10f) }
+            TvIcon.SINGLE -> {
+                canvas.drawRoundRect(android.graphics.RectF(3f, 3f, 21f, 21f), 2f, 2f, paint)
+                canvas.drawCircle(8.5f, 8.5f, 1.3f, paint)
+                canvas.drawPath(android.graphics.Path().apply { moveTo(4f, 17f); lineTo(9f, 12f); lineTo(12f, 15f); lineTo(15f, 11f); lineTo(20f, 17f) }, paint)
+            }
+            TvIcon.PAIRS -> {
+                canvas.drawRoundRect(android.graphics.RectF(2.5f, 5f, 11f, 19f), 1.5f, 1.5f, paint)
+                canvas.drawRoundRect(android.graphics.RectF(13f, 5f, 21.5f, 19f), 1.5f, 1.5f, paint)
+                canvas.drawPath(android.graphics.Path().apply {
+                    moveTo(3.5f, 16f); lineTo(6f, 13f); lineTo(8f, 15f); lineTo(10f, 12f); lineTo(11f, 13.5f)
+                    moveTo(14f, 16f); lineTo(16.5f, 13f); lineTo(18.5f, 15f); lineTo(20.5f, 12f); lineTo(21.5f, 13.5f)
+                }, paint)
+            }
+            TvIcon.PREVIEW -> canvas.drawPath(android.graphics.Path().apply { moveTo(7f, 4f); lineTo(19f, 12f); lineTo(7f, 20f); close() }, paint)
+            TvIcon.SAVE -> canvas.drawPath(android.graphics.Path().apply { moveTo(4f, 12f); lineTo(9.5f, 17.5f); lineTo(20f, 6.5f) }, paint)
+            TvIcon.CANCEL -> {
+                canvas.drawPath(android.graphics.Path().apply {
+                    moveTo(20f, 19f); cubicTo(20f, 12f, 16f, 8f, 10f, 8f); lineTo(5f, 8f)
+                    moveTo(9f, 4f); lineTo(5f, 8f); lineTo(9f, 12f)
+                }, paint)
+            }
+        }
+    }
+
     private fun focusOutline(): android.graphics.drawable.Drawable {
         val outer = android.graphics.drawable.GradientDrawable().apply {
             setColor(Color.TRANSPARENT)
@@ -1409,6 +1866,17 @@ class MainActivity : Activity() {
             setStroke(dp(1), stroke)
         }
 
+    private fun smbRadioIndicator(): android.graphics.drawable.Drawable = android.graphics.drawable.StateListDrawable().apply {
+        fun dot(checked: Boolean) = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(if (checked) Color.WHITE else Color.TRANSPARENT)
+            setStroke(dp(if (checked) 4 else 1), if (checked) Color.rgb(128, 198, 255) else Color.rgb(179, 198, 216))
+            setSize(dp(12), dp(12))
+        }
+        addState(intArrayOf(android.R.attr.state_checked), dot(true))
+        addState(intArrayOf(), dot(false))
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun formatBytes(bytes: Long): String {
@@ -1429,6 +1897,8 @@ class MainActivity : Activity() {
         private const val STATE_SMB_HOST = "state.smbHost"
         private const val STATE_SMB_SHARE = "state.smbShare"
         private const val STATE_SMB_PATH = "state.smbPath"
+        private const val STATE_SMB_AUTH_MODE = "state.smbAuthMode"
+        private const val STATE_SMB_USERNAME = "state.smbUsername"
         private const val STATE_FOCUS_TAG = "state.focusTag"
         private const val STATE_SMB_FOCUS = "state.smbFocus"
         private const val STATE_PICKER_INDEX = "state.pickerIndex"

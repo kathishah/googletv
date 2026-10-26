@@ -18,10 +18,17 @@ internal object VideoPoster {
     private const val LOG_TAG = "VideoPoster"
 
     /** A frame scaled to fit [targetWidth] by [targetHeight], or null if the clip cannot be read or decoded. */
-    fun load(config: SmbSourceConfig, video: VideoItem, cacheDirectory: File, targetWidth: Int, targetHeight: Int): Bitmap? {
+    fun load(
+        config: SmbSourceConfig,
+        video: VideoItem,
+        cacheDirectory: File,
+        targetWidth: Int,
+        targetHeight: Int,
+        authentication: SmbAuthentication = SmbAuthentication(),
+    ): Bitmap? {
         val began = System.nanoTime()
         val reader = try {
-            ProgressiveReader(SmbRemoteVideo.open(config, video.path), ProgressiveReader.newCacheFile(cacheDirectory), video.durationSeconds)
+            ProgressiveReader(SmbRemoteVideo.open(config, video.path, authentication), ProgressiveReader.newCacheFile(cacheDirectory), video.durationSeconds)
         } catch (error: Throwable) {
             Log.w(LOG_TAG, "Poster source could not be opened (${error.safeCauseChain()}, ${error.safeSmbStatus()})")
             return null

@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * One video on the share over its own read-only Guest connection. A connection per clip means
+ * One video on the share over its own read-only SMB connection. A connection per clip means
  * [abort] can drop it without touching the slideshow's shared connection, and a reader thread is
  * never interrupted (which would break the connection mid-read).
  */
@@ -52,7 +52,11 @@ internal class SmbRemoteVideo private constructor(
 
     companion object {
         /** Opens [relativePath] (relative to the library's `originals` folder) from the configured share. */
-        fun open(config: SmbSourceConfig, relativePath: String): SmbRemoteVideo {
+        fun open(
+            config: SmbSourceConfig,
+            relativePath: String,
+            authentication: SmbAuthentication = SmbAuthentication(),
+        ): SmbRemoteVideo {
             val root = config.rootPath.trim().replace('/', '\\').trim('\\')
             val path = "$root\\${relativePath.replace('/', '\\')}"
             val smbConfig = SmbConfig.builder()
@@ -67,7 +71,7 @@ internal class SmbRemoteVideo private constructor(
             var share: DiskShare? = null
             try {
                 connection = client.connect(config.host.trim(), SMB_PORT)
-                session = connection.authenticate(AuthenticationContext.guest())
+                session = connection.authenticate(authentication.toAuthenticationContext())
                 share = session.connectShare(config.share.trim()) as? DiskShare ?: throw IOException("The SMB endpoint is not a disk share.")
                 val file = share.openFile(
                     path,

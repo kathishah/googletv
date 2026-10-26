@@ -8,7 +8,7 @@
     <string name="smb_host_hint">SMB server address</string>
     <string name="smb_share_hint">Share name (default: Photos)</string>
     <string name="smb_path_hint">Folder inside share</string>
-    <string name="smb_source_note">Read-only Guest access. Supported photos are sampled randomly from the whole folder tree.</string>
+    <string name="smb_source_note">Read-only access. Choose Guest or a registered account; the connection test checks that the library folder can be listed.</string>
     <string name="smb_config_error">Check the server address, share name, and folder path.</string>
     <string name="slide_interval_title">Slide interval</string>
     <string name="photo_pool_title">Random photo pool</string>
